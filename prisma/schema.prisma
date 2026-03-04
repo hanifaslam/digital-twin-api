@@ -1,0 +1,113 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id         String    @id @default(cuid())
+  name       String
+  email      String    @unique
+  password   String
+  role_id    String
+  role       Role      @relation(fields: [role_id], references: [id])
+  created_at DateTime  @default(now())
+  lecturer   Lecturer?
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  permissions RolePermission[]
+  users       User[]
+  created_at  DateTime         @default(now())
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  name        String           @unique // Contoh: USER_CREATE, DEVICE_CONTROL
+  module      String           // Contoh: AUTH, CONTROLLING
+  roles       RolePermission[]
+  created_at  DateTime         @default(now())
+}
+
+model RolePermission {
+  role_id       String
+  permission_id String
+  role          Role       @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  permission    Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@id([role_id, permission_id])
+}
+
+model Room {
+  id            String         @id @default(cuid())
+  name          String
+  building      String
+  status        Status         @default(INACTIVE)
+  schedules     Schedule[]
+  attendances   Attendance[]
+  device_status DeviceStatus?
+  sensor_logs   SensorLog[]
+}
+
+model Lecturer {
+  id          String       @id @default(cuid())
+  name        String
+  nip         String       @unique
+  user_id     String       @unique
+  user        User         @relation(fields: [user_id], references: [id])
+  schedules   Schedule[]
+  attendances Attendance[]
+}
+
+model Schedule {
+  id          String   @id @default(cuid())
+  lecturer_id String
+  room_id     String
+  day         String
+  start_time  String   // HH:mm
+  end_time    String   // HH:mm
+  lecturer    Lecturer @relation(fields: [lecturer_id], references: [id])
+  room        Room     @relation(fields: [room_id], references: [id])
+}
+
+model Attendance {
+  id            String    @id @default(cuid())
+  lecturer_id   String
+  room_id       String
+  check_in_at   DateTime  @default(now())
+  check_out_at  DateTime?
+  status        String
+  lecturer      Lecturer  @relation(fields: [lecturer_id], references: [id])
+  room          Room      @relation(fields: [room_id], references: [id])
+}
+
+model DeviceStatus {
+  id         String   @id @default(cuid())
+  room_id    String   @unique
+  light      Boolean  @default(false)
+  ac         Boolean  @default(false)
+  updated_at DateTime @updatedAt
+  room       Room     @relation(fields: [room_id], references: [id])
+}
+
+model SensorLog {
+  id           String   @id @default(cuid())
+  room_id      String
+  voltage      Float?
+  current      Float?
+  power        Float?
+  energy       Float?
+  frequency    Float?
+  power_factor Float?
+  created_at   DateTime @default(now())
+  room         Room     @relation(fields: [room_id], references: [id])
+}
+
+enum Status {
+  ACTIVE
+  INACTIVE
+}
