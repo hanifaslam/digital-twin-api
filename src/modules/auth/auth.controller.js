@@ -1,11 +1,12 @@
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
 const prisma = require("../../config/prisma");
 const { success, error } = require("../../config/response");
 
 const generateTokens = (user) => {
   const accessToken = jwt.sign(
-    { id: user.id, email: user.email },
+    { id: user.id, username: user.username, email: user.email },
     process.env.JWT_ACCESS_SECRET,
     { expiresIn: "15m" },
   );
@@ -21,43 +22,95 @@ const generateTokens = (user) => {
 
 const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { login: username, password, remember_me } = req.body;
 
-    const user = await prisma.user.findUnique({
-      where: { email },
-      include: { role: true },
+    const user = await prisma.user.findFirst({
+      where: { username },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: {
+                  include: { module: true },
+                },
+              },
+            },
+          },
+        },
+      },
     });
 
-    if (!user) return error(res, "Email atau password salah", 401);
+    if (!user) return error(res, "Username atau password salah", 401);
 
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) return error(res, "Email atau password salah", 401);
+    if (!isMatch) return error(res, "Username atau password salah", 401);
 
     const { accessToken, refreshToken } = generateTokens(user);
 
-    // 1. Set Access Token di Cookie (HttpOnly)
-    res.cookie("accessToken", accessToken, {
+    const cookieOptions = {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
+    };
+
+    // 1. Set Access Token di Cookie
+    res.cookie("accessToken", accessToken, {
+      ...cookieOptions,
       maxAge: 15 * 60 * 1000, // 15 menit
     });
 
-    // 2. Set Refresh Token di Cookie (HttpOnly)
+    // 2. Set Refresh Token di Cookie
     res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 hari
+      ...cookieOptions,
+      ...(remember_me && { maxAge: 7 * 24 * 60 * 60 * 1000 }), // 7 hari jika remember_me
     });
+
+    const formatAccess = (permissions) => {
+      const modules = {};
+
+      permissions.forEach((rp) => {
+        const p = rp.permission;
+        const m = p.module;
+
+        if (!modules[m.id]) {
+          modules[m.id] = {
+            id: m.id,
+            name: m.name,
+            code: m.code,
+            sequence: m.sequence,
+            children: [],
+          };
+        }
+
+        if (m.code !== "dashboard") {
+          modules[m.id].children.push({
+            id: p.id,
+            name: p.name
+              .replace(/_/g, " ")
+              .toLowerCase()
+              .replace(/\b\w/g, (l) => l.toUpperCase()),
+            code: p.name.toLowerCase(),
+          });
+        }
+      });
+
+      return Object.values(modules).sort(
+        (a, b) => (a.sequence || 0) - (b.sequence || 0),
+      );
+    };
+
+    const access = formatAccess(user.role.permissions);
 
     // Response Bersih (Tanpa token di body)
     return success(res, "success", {
-      user: {
-        id: user.id,
-        name: user.name,
-        role: user.role.name,
-      },
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      email: user.email,
+      role_name: user.role.name,
+      role_id: user.role_id,
+      access,
     });
   } catch (err) {
     console.error(err);
@@ -81,7 +134,7 @@ const refreshToken = async (req, res) => {
       if (!user) return error(res, "User not found", 401);
 
       const accessToken = jwt.sign(
-        { id: user.id, email: user.email },
+        { id: user.id, username: user.username, email: user.email },
         process.env.JWT_ACCESS_SECRET,
         { expiresIn: "15m" },
       );
@@ -95,6 +148,60 @@ const refreshToken = async (req, res) => {
       });
 
       return success(res, "success");
+    });
+  } catch (err) {
+    return error(res, "Internal server error", 500);
+  }
+};
+
+const getMe = async (req, res) => {
+  try {
+    const user = req.user;
+
+    const formatAccess = (permissions) => {
+      const modules = {};
+
+      permissions.forEach((rp) => {
+        const p = rp.permission;
+        const m = p.module;
+
+        if (!modules[m.id]) {
+          modules[m.id] = {
+            id: m.id,
+            name: m.name,
+            code: m.code,
+            sequence: m.sequence,
+            children: [],
+          };
+        }
+
+        if (m.code !== "dashboard") {
+          modules[m.id].children.push({
+            id: p.id,
+            name: p.name
+              .replace(/_/g, " ")
+              .toLowerCase()
+              .replace(/\b\w/g, (l) => l.toUpperCase()),
+            code: p.name.toLowerCase(),
+          });
+        }
+      });
+
+      return Object.values(modules).sort(
+        (a, b) => (a.sequence || 0) - (b.sequence || 0),
+      );
+    };
+
+    const access = formatAccess(user.role.permissions);
+
+    return success(res, "success", {
+      id: user.id,
+      name: user.name,
+      username: user.username,
+      email: user.email,
+      role_name: user.role.name,
+      role_id: user.role_id,
+      access,
     });
   } catch (err) {
     return error(res, "Internal server error", 500);
@@ -115,4 +222,103 @@ const logout = (req, res) => {
   return success(res, "success");
 };
 
-module.exports = { login, refreshToken, logout };
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) return error(res, "Email tidak terdaftar", 404);
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const expires = new Date(Date.now() + 3600000); // 1 jam
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        reset_password_token: token,
+        reset_password_expires: expires,
+      },
+    });
+
+    return success(res, "Token reset password berhasil dibuat", { token });
+  } catch (err) {
+    console.error(err);
+    return error(res, "Internal server error", 500);
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { password, confirm_password } = req.body;
+
+    if (password !== confirm_password) {
+      return error(res, "Konfirmasi password tidak cocok", 400);
+    }
+
+    const user = await prisma.user.findFirst({
+      where: {
+        reset_password_token: token,
+        reset_password_expires: { gte: new Date() },
+      },
+    });
+
+    if (!user)
+      return error(res, "Token tidak valid atau sudah kadaluwarsa", 400);
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        reset_password_token: null,
+        reset_password_expires: null,
+      },
+    });
+
+    return success(res, "Password berhasil diperbarui");
+  } catch (err) {
+    console.error(err);
+    return error(res, "Internal server error", 500);
+  }
+};
+
+const changePassword = async (req, res) => {
+  try {
+    const { old_password, new_password, confirm_password } = req.body;
+    const user_id = req.user.id;
+
+    if (new_password !== confirm_password) {
+      return error(res, "Konfirmasi password baru tidak cocok", 400);
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: user_id } });
+    if (!user) return error(res, "User tidak ditemukan", 404);
+
+    const isMatch = await bcrypt.compare(old_password, user.password);
+    if (!isMatch) return error(res, "Password lama salah", 400);
+
+    const hashedPassword = await bcrypt.hash(new_password, 10);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+
+    return success(res, "Password berhasil diubah");
+  } catch (err) {
+    console.error(err);
+    return error(res, "Internal server error", 500);
+  }
+};
+
+module.exports = {
+  login,
+  refreshToken,
+  getMe,
+  logout,
+  forgotPassword,
+  resetPassword,
+  changePassword,
+};

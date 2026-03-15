@@ -9,12 +9,17 @@ datasource db {
 model User {
   id         String    @id @default(cuid())
   name       String
+  username   String    @unique
   email      String    @unique
   password   String
   role_id    String
   role       Role      @relation(fields: [role_id], references: [id])
+  reset_password_token   String?
+  reset_password_expires DateTime?
   created_at DateTime  @default(now())
   lecturer   Lecturer?
+
+  @@index([role_id])
 }
 
 model Role {
@@ -28,10 +33,23 @@ model Role {
 model Permission {
   id          String           @id @default(cuid())
   name        String           @unique // Contoh: USER_CREATE, DEVICE_CONTROL
-  module      String           // Contoh: AUTH, CONTROLLING
+  module_id   String
+  module      Module           @relation(fields: [module_id], references: [id])
   roles       RolePermission[]
   created_at  DateTime         @default(now())
 }
+
+model Module {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  code        String       @unique
+  sequence    Int?         @default(0)
+  permissions Permission[]
+  created_at  DateTime     @default(now())
+}
+
+
+
 
 model RolePermission {
   role_id       String
@@ -72,6 +90,8 @@ model Schedule {
   end_time    String   // HH:mm
   lecturer    Lecturer @relation(fields: [lecturer_id], references: [id])
   room        Room     @relation(fields: [room_id], references: [id])
+
+  @@index([lecturer_id, room_id, day])
 }
 
 model Attendance {
@@ -83,6 +103,10 @@ model Attendance {
   status        String
   lecturer      Lecturer  @relation(fields: [lecturer_id], references: [id])
   room          Room      @relation(fields: [room_id], references: [id])
+
+  @@index([lecturer_id])
+  @@index([room_id])
+  @@index([check_in_at])
 }
 
 model DeviceStatus {
@@ -105,7 +129,11 @@ model SensorLog {
   power_factor Float?
   created_at   DateTime @default(now())
   room         Room     @relation(fields: [room_id], references: [id])
+
+  @@index([room_id])
+  @@index([created_at])
 }
+
 
 enum Status {
   ACTIVE

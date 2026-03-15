@@ -9,30 +9,42 @@ const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
 async function main() {
-  // 1. Definisikan Permissions per Modul
-  const permissionsData = [
-    { name: "USER_MANAGEMENT", module: "AUTH" },
-    { name: "ROLE_MANAGEMENT", module: "AUTH" },
-    { name: "MASTER_DATA_READ", module: "MASTER" },
-    { name: "MASTER_DATA_EDIT", module: "MASTER" },
-    { name: "SCHEDULE_MANAGE", module: "JADWAL" },
-    { name: "ATTENDANCE_CREATE", module: "KEHADIRAN" },
-    { name: "ATTENDANCE_READ", module: "KEHADIRAN" },
-    { name: "DIGITAL_TWIN_VIEW", module: "DIGITAL_TWIN" },
-    { name: "MONITORING_READ", module: "INFRA" },
-    { name: "DEVICE_CONTROL", module: "CONTROLLING" },
-    { name: "ANALYTICS_READ", module: "ANALYTICS" },
+  // 1. Buat Modules (Dashboard dan User Management)
+  const modulesData = [
+    { name: "Dashboard", code: "dashboard", sequence: 1 },
+    { name: "User Management", code: "user_management", sequence: 2 },
   ];
+
+
+  const modules = {};
+  for (const m of modulesData) {
+    modules[m.code] = await prisma.module.upsert({
+      where: { code: m.code },
+      update: m,
+      create: m,
+    });
+  }
+
+  // 2. Definisikan Permissions
+  const permissionsData = [
+    { name: "DASHBOARD", module_code: "dashboard" },
+    { name: "USER", module_code: "user_management" },
+    { name: "ROLE", module_code: "user_management" },
+  ];
+
 
   for (const p of permissionsData) {
     await prisma.permission.upsert({
       where: { name: p.name },
-      update: {},
-      create: p,
+      update: { module_id: modules[p.module_code].id },
+      create: { 
+        name: p.name, 
+        module_id: modules[p.module_code].id 
+      },
     });
   }
 
-  // 2. Buat Roles
+  // 3. Buat Roles
   const roles = ["SUPERADMIN", "DOSEN", "HELPER", "MAHASISWA"];
   const allPerms = await prisma.permission.findMany();
 
@@ -47,28 +59,10 @@ async function main() {
     let rolePerms = [];
     if (roleName === "SUPERADMIN") {
       rolePerms = allPerms;
-    } else if (roleName === "DOSEN") {
-      rolePerms = allPerms.filter((p) =>
-        [
-          "ATTENDANCE_CREATE",
-          "DEVICE_CONTROL",
-          "MONITORING_READ",
-          "DIGITAL_TWIN_VIEW",
-        ].includes(p.name),
-      );
-    } else if (roleName === "HELPER") {
-      rolePerms = allPerms.filter((p) =>
-        [
-          "MONITORING_READ",
-          "DEVICE_CONTROL",
-          "DIGITAL_TWIN_VIEW",
-          "MASTER_DATA_READ",
-        ].includes(p.name),
-      );
-    } else if (roleName === "MAHASISWA") {
-      rolePerms = allPerms.filter((p) =>
-        ["DIGITAL_TWIN_VIEW"].includes(p.name),
-      );
+    } else {
+      // Role lain sementara hanya Dashboard View
+      rolePerms = allPerms.filter(p => p.name === "DASHBOARD");
+
     }
 
     for (const p of rolePerms) {
@@ -82,7 +76,7 @@ async function main() {
     }
   }
 
-  // 3. Buat Super Admin Awal
+  // 4. Buat Super Admin Awal
   const superRole = await prisma.role.findUnique({
     where: { name: "SUPERADMIN" },
   });
@@ -93,6 +87,7 @@ async function main() {
     update: {},
     create: {
       name: "Super Admin",
+      username: "Superadmin",
       email: "admin@twin.com",
       password: hashedPassword,
       role_id: superRole.id,
