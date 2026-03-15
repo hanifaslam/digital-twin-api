@@ -18,8 +18,13 @@ const authMiddleware = async (req, res, next) => {
         role: {
           include: {
             permissions: {
-              include: { permission: true },
+              include: {
+                permission: {
+                  include: { module: true },
+                },
+              },
             },
+
           },
         },
         lecturer: true,
