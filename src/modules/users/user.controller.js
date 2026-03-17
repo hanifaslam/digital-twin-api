@@ -5,43 +5,97 @@ const { success, error } = require("../../config/response");
 const userController = {
   create: async (req, res) => {
     try {
-      const { name, username, email, password, role_id } = req.body;
-      const hashedPassword = await bcrypt.hash(password, 10);
-      const user = await prisma.user.create({
-        data: { name, username, email, password: hashedPassword, role_id },
-        select: {
-          id: true,
-          name: true,
-          username: true,
-          email: true,
-          role_id: true,
-          created_at: true,
+      const {
+        name,
+        username,
+        email,
+        password,
+        confirm_password,
+        role_id,
+        status,
+      } = req.body;
+
+      if (!name || !username || !email || !password || !role_id) {
+        return error(res, "Missing required fields", 400);
+      }
+
+      if (password !== confirm_password) {
+        return error(res, "Password and confirm password do not match", 400);
+      }
+
+      const existingUser = await prisma.user.findFirst({
+        where: {
+          OR: [{ email }, { username }],
         },
       });
 
-      return success(res, "success", user, 201);
+      if (existingUser) {
+        if (existingUser.email === email) {
+          return error(res, "Email already registered", 400);
+        }
+        if (existingUser.username === username) {
+          return error(res, "Username already taken", 400);
+        }
+      }
+
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      await prisma.user.create({
+        data: {
+          name,
+          username,
+          email,
+          password: hashedPassword,
+          role_id,
+          status: status !== undefined ? status : true,
+        },
+      });
+
+      return success(res, "success", null, 201);
     } catch (err) {
-      return error(res, err.message, 400);
+      return error(res, err.message, 500);
     }
   },
 
   getAll: async (req, res) => {
     try {
-      const users = await prisma.user.findMany({
-        select: {
-          id: true,
-          name: true,
-          username: true,
-          email: true,
-          role_id: true,
-          created_at: true,
-          role: true,
-          lecturer: true,
-        },
+      const page = parseInt(req.query.page) || 1;
+      const perPage = parseInt(req.query.per_page) || 10;
+      const skip = (page - 1) * perPage;
 
-      });
+      const [users, total] = await Promise.all([
+        prisma.user.findMany({
+          skip,
+          take: perPage,
+          include: {
+            role: true,
+          },
+          orderBy: {
+            created_at: "desc",
+          },
+        }),
+        prisma.user.count(),
+      ]);
 
-      return success(res, "success", users);
+      const formattedData = users.map((user) => ({
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        role_name: user.role?.name || null,
+        status: user.status,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      }));
+
+      const metadata = {
+        per_page: perPage,
+        current_page: page,
+        total_row: total,
+        total_page: Math.ceil(total / perPage),
+      };
+
+      return success(res, "success", formattedData, 200, metadata);
     } catch (err) {
       return error(res, err.message, 500);
     }
@@ -52,22 +106,136 @@ const userController = {
       const { id } = req.params;
       const user = await prisma.user.findUnique({
         where: { id },
-        select: {
-          id: true,
-          name: true,
-          username: true,
-          email: true,
-          role_id: true,
-          created_at: true,
+        include: {
           role: true,
-          lecturer: true,
         },
-
       });
 
       if (!user) return error(res, "User not found", 404);
 
-      return success(res, "success", user);
+      const formattedUser = {
+        id: user.id,
+        name: user.name,
+        username: user.username,
+        email: user.email,
+        role_id: user.role_id,
+        role_name: user.role?.name,
+        status: user.status,
+        created_at: user.created_at,
+        updated_at: user.updated_at,
+      };
+
+      return success(res, "success", formattedUser);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  },
+
+  update: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name, username, email, role_id, status } = req.body;
+
+      const userExists = await prisma.user.findUnique({ where: { id } });
+      if (!userExists) return error(res, "User not found", 404);
+
+      if (email || username) {
+        const conflict = await prisma.user.findFirst({
+          where: {
+            OR: [
+              email ? { email } : null,
+              username ? { username } : null,
+            ].filter(Boolean),
+            NOT: { id },
+          },
+        });
+
+        if (conflict) {
+          if (email && conflict.email === email) {
+            return error(res, "Email already registered", 400);
+          }
+          if (username && conflict.username === username) {
+            return error(res, "Username already taken", 400);
+          }
+        }
+      }
+
+      let updateData = {
+        name,
+        username,
+        email,
+        role_id,
+        status,
+      };
+
+      Object.keys(updateData).forEach(
+        (key) => updateData[key] === undefined && delete updateData[key],
+      );
+
+      await prisma.user.update({
+        where: { id },
+        data: updateData,
+      });
+
+      return success(res, "success", null);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  },
+
+  toggleStatus: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status } = req.body;
+
+      if (status === undefined) {
+        return error(res, "Status is required", 400);
+      }
+
+      if (typeof status !== "boolean") {
+        return error(res, "Status must be a boolean", 400);
+      }
+
+      const newStatus = status;
+
+      const userExists = await prisma.user.findUnique({ where: { id } });
+      if (!userExists) return error(res, "User not found", 404);
+
+      await prisma.user.update({
+        where: { id },
+        data: { status: newStatus },
+      });
+
+      return success(res, "success", null);
+    } catch (err) {
+      return error(res, err.message, 500);
+    }
+  },
+
+  resetPassword: async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { new_password, confirm_password } = req.body;
+
+      if (!new_password || !confirm_password) {
+        return error(res, "Missing required fields", 400);
+      }
+
+      if (new_password !== confirm_password) {
+        return error(res, "Password and confirm password do not match", 400);
+      }
+
+      const userExists = await prisma.user.findUnique({ where: { id } });
+      if (!userExists) return error(res, "User not found", 404);
+
+      const hashedPassword = await bcrypt.hash(new_password, 10);
+
+      await prisma.user.update({
+        where: { id },
+        data: { password: hashedPassword },
+      });
+
+      return success(res, "success", null);
     } catch (err) {
       return error(res, err.message, 500);
     }

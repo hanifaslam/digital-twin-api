@@ -14,9 +14,11 @@ model User {
   password   String
   role_id    String
   role       Role      @relation(fields: [role_id], references: [id])
+  status     Boolean   @default(true)
   reset_password_token   String?
   reset_password_expires DateTime?
   created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
   lecturer   Lecturer?
 
   @@index([role_id])

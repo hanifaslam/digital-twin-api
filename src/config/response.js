@@ -14,8 +14,8 @@ const responseHandler = (
   });
 };
 
-const success = (res, message, data = null, statusCode = 200) => {
-  return responseHandler(res, true, message, data, statusCode);
+const success = (res, message, data = null, statusCode = 200, metadata = {}) => {
+  return responseHandler(res, true, message, data, statusCode, metadata);
 };
 
 const error = (res, message, statusCode = 500) => {
