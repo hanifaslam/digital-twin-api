@@ -50,8 +50,8 @@ const login = async (req, res) => {
 
     const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: true,
+      sameSite: "none",
     };
 
     res.cookie("accessToken", accessToken, {
@@ -102,8 +102,8 @@ const refreshToken = async (req, res) => {
       // Update Access Token Cookie
       res.cookie("accessToken", accessToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        secure: true,
+        sameSite: "none",
         maxAge: 15 * 60 * 1000,
       });
 
@@ -170,8 +170,8 @@ const getMe = async (req, res) => {
 const logout = (req, res) => {
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
+    secure: true,
+    sameSite: "none",
     path: "/",
   };
 
