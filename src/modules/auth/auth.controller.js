@@ -54,55 +54,16 @@ const login = async (req, res) => {
       sameSite: "strict",
     };
 
-    // 1. Set Access Token di Cookie
     res.cookie("accessToken", accessToken, {
       ...cookieOptions,
-      maxAge: 15 * 60 * 1000, // 15 menit
+      maxAge: 15 * 60 * 1000,
     });
 
-    // 2. Set Refresh Token di Cookie
     res.cookie("refreshToken", refreshToken, {
       ...cookieOptions,
-      ...(remember_me && { maxAge: 7 * 24 * 60 * 60 * 1000 }), // 7 hari jika remember_me
+      ...(remember_me && { maxAge: 7 * 24 * 60 * 60 * 1000 }),
     });
 
-    const formatAccess = (permissions) => {
-      const modules = {};
-
-      permissions.forEach((rp) => {
-        const p = rp.permission;
-        const m = p.module;
-
-        if (!modules[m.id]) {
-          modules[m.id] = {
-            id: m.id,
-            name: m.name,
-            code: m.code,
-            sequence: m.sequence,
-            children: [],
-          };
-        }
-
-        if (m.code !== "dashboard") {
-          modules[m.id].children.push({
-            id: p.id,
-            name: p.name
-              .replace(/_/g, " ")
-              .toLowerCase()
-              .replace(/\b\w/g, (l) => l.toUpperCase()),
-            code: p.name.toLowerCase(),
-          });
-        }
-      });
-
-      return Object.values(modules).sort(
-        (a, b) => (a.sequence || 0) - (b.sequence || 0),
-      );
-    };
-
-    const access = formatAccess(user.role.permissions);
-
-    // Response Bersih (Tanpa token di body)
     return success(res, "success", {
       id: user.id,
       name: user.name,
@@ -110,7 +71,6 @@ const login = async (req, res) => {
       email: user.email,
       role_name: user.role.name,
       role_id: user.role_id,
-      access,
     });
   } catch (err) {
     console.error(err);
@@ -170,7 +130,6 @@ const getMe = async (req, res) => {
             id: m.id,
             name: m.name,
             code: m.code,
-            sequence: m.sequence,
             children: [],
           };
         }
