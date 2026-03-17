@@ -27,6 +27,8 @@ model User {
 model Role {
   id          String           @id @default(cuid())
   name        String           @unique
+  code        String?          @unique
+  status      Boolean          @default(true)
   permissions RolePermission[]
   users       User[]
   created_at  DateTime         @default(now())
