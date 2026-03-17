@@ -5,12 +5,13 @@ const lecturerRoutes = require("../modules/lecturers/lecturer.routes");
 const authRoutes = require("../modules/auth/auth.routes");
 const { authMiddleware } = require("../common/middlewares/auth.middleware");
 const roleRoutes = require("../modules/roles/role.routes");
+const permissionRoutes = require("../modules/permissions/permission.routes");
 
-router.use("/auth", authRoutes); // Login, Refresh, Logout (Public)
+router.use("/auth", authRoutes);
 
-// Semua route di bawah ini diproteksi (Wajib Login)
 router.use("/users", authMiddleware, userRoutes);
 router.use("/lecturers", authMiddleware, lecturerRoutes);
 router.use("/roles", authMiddleware, roleRoutes);
+router.use("/permissions", permissionRoutes);
 
 module.exports = router;
