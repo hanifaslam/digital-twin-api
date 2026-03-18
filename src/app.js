@@ -33,6 +33,11 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser()); // PENTING: Untuk baca refresh token
 
+// Health check for CD with Dokploy
+app.get("/health", (req, res) => {
+  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
 // Main Routes
 app.use("/api", routes);
 
