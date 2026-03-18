@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 const prisma = require("../../config/prisma");
 const { error } = require("../../config/response");
+const redisClient = require("../../config/redis");
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -11,35 +12,57 @@ const authMiddleware = async (req, res, next) => {
     if (!token) return error(res, "Unauthorized - Access token missing", 401);
 
     const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+    const userId = decoded.id;
+    const redisKey = `user:auth:${userId}`;
 
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      include: {
-        role: {
-          include: {
-            permissions: {
-              include: {
-                permission: {
-                  include: { module: true },
+    let user;
+
+    // 2. Cek Cache Redis
+    try {
+      const cachedUser = await redisClient.get(redisKey);
+      if (cachedUser) {
+        user = JSON.parse(cachedUser);
+      }
+    } catch (err) {
+      console.error("Redis Get Error:", err);
+    }
+
+    if (!user) {
+      // 3. Jika tidak ada di cache, ambil dari Database
+      user = await prisma.user.findUnique({
+        where: { id: userId },
+        include: {
+          role: {
+            include: {
+              permissions: {
+                include: {
+                  permission: {
+                    include: { module: true },
+                  },
                 },
               },
             },
-
           },
+          lecturer: true,
         },
-        lecturer: true,
-      },
-    });
+      });
 
-    if (!user) return error(res, "User not found", 401);
+      if (!user) return error(res, "User not found", 401);
 
-    const permissions = user.role.permissions.map((rp) => rp.permission.name);
+      // Simpan permissions ke dalam objek user agar konsisten
+      user.permissions = user.role.permissions.map((rp) => rp.permission.name);
 
-    req.user = {
-      ...user,
-      permissions,
-    };
+      // 4. Simpan ke Redis (Expire dalam 10 menit / 600 detik)
+      try {
+        await redisClient.set(redisKey, JSON.stringify(user), {
+          EX: 600,
+        });
+      } catch (err) {
+        console.error("Redis Set Error:", err);
+      }
+    }
 
+    req.user = user;
     next();
   } catch (err) {
     if (err.name === "TokenExpiredError") {
@@ -61,7 +84,7 @@ const checkPermission = (permissionName) => {
 };
 
 const checkRoomAccess = async (req, res, next) => {
-  const { room_id } = req.body || req.params;
+  const { room_id } = req.body || req.params || req.query; // Menambahkan req.query untuk kelengkapan
   const user = req.user;
 
   if (["SUPERADMIN", "HELPER"].includes(user.role.name)) return next();
