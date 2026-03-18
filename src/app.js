@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
@@ -6,7 +7,26 @@ const routes = require("./routes");
 const app = express();
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(",") : "http://localhost:3000",
+  origin: (origin, callback) => {
+    // Jika FRONTEND_URL tidak ada, default ke localhost
+    if (!process.env.FRONTEND_URL) {
+      return callback(null, "http://localhost:3000");
+    }
+
+    // Split dengan koma dan trim setiap origin, hapus trailing slash jika ada
+    const allowedOrigins = process.env.FRONTEND_URL
+      .split(",")
+      .map(url => url.trim().replace(/\/$/, ""));
+
+    // Izinkan jika origin request ada di daftar yang diizinkan
+    // origin bisa undefined jika request bukan dari browser (misalnya mobile app atau curl)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.error(`CORS Error: Origin ${origin} not allowed. Allowed: ${allowedOrigins.join(", ")}`);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
   credentials: true
 }));
 
