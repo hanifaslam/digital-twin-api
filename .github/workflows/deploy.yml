@@ -45,7 +45,4 @@ jobs:
       - name: Trigger Dokploy Webhook
         run: |
           curl -X POST --retry 3 --retry-delay 5 "${{ secrets.DOKPLOY_WEBHOOK_URL }}" \
-          -H "Content-Type: application/json" \
-          -d '{
-            "message": "${{ github.event.head_commit.message }}"
-          }'
+          -H "Content-Type: application/json"
