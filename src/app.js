@@ -1,73 +1,74 @@
-require("dotenv").config();
-const express = require("express");
-const cookieParser = require("cookie-parser");
-const cors = require("cors");
-const routes = require("./routes");
-const { error } = require("./config/response");
+require('dotenv').config()
+const express = require('express')
+const cookieParser = require('cookie-parser')
+const cors = require('cors')
+const routes = require('./routes')
+const { error } = require('./config/response')
 
-
-const app = express();
+const app = express()
 
 app.use(
   cors({
     origin: (origin, callback) => {
       // Jika FRONTEND_URL tidak ada, default ke localhost
       if (!process.env.FRONTEND_URL) {
-        return callback(null, "http://localhost:3000");
+        return callback(null, 'http://localhost:3000')
       }
 
       // Split dengan koma dan trim setiap origin, hapus trailing slash jika ada
-      const allowedOrigins = process.env.FRONTEND_URL.split(",").map((url) =>
-        url.trim().replace(/\/$/, ""),
-      );
+      const allowedOrigins = process.env.FRONTEND_URL.split(',').map((url) =>
+        url.trim().replace(/\/$/, '')
+      )
 
       // Izinkan jika origin request ada di daftar yang diizinkan
       // origin bisa undefined jika request bukan dari browser (misalnya mobile app atau curl)
       if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
+        callback(null, true)
       } else {
         console.error(
-          `CORS Error: Origin ${origin} not allowed. Allowed: ${allowedOrigins.join(", ")}`,
-        );
-        callback(new Error("Not allowed by CORS"));
+          `CORS Error: Origin ${origin} not allowed. Allowed: ${allowedOrigins.join(', ')}`
+        )
+        callback(new Error('Not allowed by CORS'))
       }
     },
-    credentials: true,
-  }),
-);
+    credentials: true
+  })
+)
 
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser()); // PENTING: Untuk baca refresh token
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
+app.use(cookieParser()) // PENTING: Untuk baca refresh token
 
 // Health check for CD with Dokploy
-app.get("/health", (req, res) => {
-  res.status(200).json({ status: "ok", timestamp: new Date().toISOString() });
-});
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
+})
 
 // Main Routes
-app.use("/api", routes);
+app.use('/api', routes)
 
 // 404 Handler
 app.use((req, res) => {
-  return error(res, `Route ${req.method} ${req.originalUrl} not found`, 404);
-});
+  return error(res, `Route ${req.method} ${req.originalUrl} not found`, 404)
+})
 
 // Error Handling
 app.use((err, req, res, next) => {
-  console.error(err.stack);
+  console.error(err.stack)
   return error(
     res,
-    process.env.NODE_ENV === "development" ? err.message : "Something went wrong!",
-    500,
-  );
-});
+    process.env.NODE_ENV === 'development'
+      ? err.message
+      : 'Something went wrong!',
+    500
+  )
+})
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3000
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+  console.log(`Server running on http://localhost:${PORT}`)
+})
 
-module.exports = app;
+module.exports = app
 
 //test
