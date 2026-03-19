@@ -86,8 +86,8 @@ const userController = {
         where.status = status === 'true' || status === true
       }
 
-      if (role_id) {
-        where.role_id = role_id
+      if (role) {
+        where.role_id = role
       }
 
       const [users, total] = await Promise.all([
