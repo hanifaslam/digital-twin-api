@@ -1,30 +1,30 @@
-const jwt = require("jsonwebtoken");
-const prisma = require("../../config/prisma");
-const { error } = require("../../config/response");
-const redisClient = require("../../config/redis");
+const jwt = require('jsonwebtoken')
+const prisma = require('../../config/prisma')
+const { error } = require('../../config/response')
+const redisClient = require('../../config/redis')
 
 const authMiddleware = async (req, res, next) => {
   try {
     // 1. Cek token di Cookie (Utama) atau Header (Cadangan)
     const token =
-      req.cookies.accessToken || req.headers.authorization?.split(" ")[1];
+      req.cookies.accessToken || req.headers.authorization?.split(' ')[1]
 
-    if (!token) return error(res, "Unauthorized - Access token missing", 401);
+    if (!token) return error(res, 'Unauthorized - Access token missing', 401)
 
-    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
-    const userId = decoded.id;
-    const redisKey = `user:auth:${userId}`;
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET)
+    const userId = decoded.id
+    const redisKey = `user:auth:${userId}`
 
-    let user;
+    let user
 
     // 2. Cek Cache Redis
     try {
-      const cachedUser = await redisClient.get(redisKey);
+      const cachedUser = await redisClient.get(redisKey)
       if (cachedUser) {
-        user = JSON.parse(cachedUser);
+        user = JSON.parse(cachedUser)
       }
     } catch (err) {
-      console.error("Redis Get Error:", err);
+      console.error('Redis Get Error:', err)
     }
 
     if (!user) {
@@ -37,73 +37,73 @@ const authMiddleware = async (req, res, next) => {
               permissions: {
                 include: {
                   permission: {
-                    include: { module: true },
-                  },
-                },
-              },
-            },
+                    include: { module: true }
+                  }
+                }
+              }
+            }
           },
-          lecturer: true,
-        },
-      });
+          lecturer: true
+        }
+      })
 
-      if (!user) return error(res, "User not found", 401);
+      if (!user) return error(res, 'User not found', 401)
 
       // Simpan permissions ke dalam objek user agar konsisten
-      user.permissions = user.role.permissions.map((rp) => rp.permission.name);
+      user.permissions = user.role.permissions.map((rp) => rp.permission.name)
 
       // 4. Simpan ke Redis (Expire dalam 10 menit / 600 detik)
       try {
         await redisClient.set(redisKey, JSON.stringify(user), {
-          EX: 600,
-        });
+          EX: 600
+        })
       } catch (err) {
-        console.error("Redis Set Error:", err);
+        console.error('Redis Set Error:', err)
       }
     }
 
-    req.user = user;
-    next();
+    req.user = user
+    next()
   } catch (err) {
-    if (err.name === "TokenExpiredError") {
-      return error(res, "Access token expired", 401);
+    if (err.name === 'TokenExpiredError') {
+      return error(res, 'Access token expired', 401)
     }
-    return error(res, "Invalid token", 401);
+    return error(res, 'Invalid token', 401)
   }
-};
+}
 
 const checkPermission = (permissionName) => {
   return (req, res, next) => {
-    if (req.user.role.name === "SUPERADMIN") return next();
+    if (req.user.role.name === 'SUPERADMIN') return next()
 
     if (!req.user.permissions.includes(permissionName)) {
-      return error(res, "You don't have permission to access this module", 403);
+      return error(res, "You don't have permission to access this module", 403)
     }
-    next();
-  };
-};
+    next()
+  }
+}
 
 const checkRoomAccess = async (req, res, next) => {
-  const { room_id } = req.body || req.params || req.query; // Menambahkan req.query untuk kelengkapan
-  const user = req.user;
+  const { room_id } = req.body || req.params || req.query // Menambahkan req.query untuk kelengkapan
+  const user = req.user
 
-  if (["SUPERADMIN", "HELPER"].includes(user.role.name)) return next();
+  if (['SUPERADMIN', 'HELPER'].includes(user.role.name)) return next()
 
-  if (user.role.name === "DOSEN") {
-    if (!user.lecturer) return error(res, "Lecturer profile not found", 403);
+  if (user.role.name === 'DOSEN') {
+    if (!user.lecturer) return error(res, 'Lecturer profile not found', 403)
 
-    const now = new Date();
-    const currentTime = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+    const now = new Date()
+    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
     const days = [
-      "Minggu",
-      "Senin",
-      "Selasa",
-      "Rabu",
-      "Kamis",
-      "Jumat",
-      "Sabtu",
-    ];
-    const currentDay = days[now.getDay()];
+      'Minggu',
+      'Senin',
+      'Selasa',
+      'Rabu',
+      'Kamis',
+      'Jumat',
+      'Sabtu'
+    ]
+    const currentDay = days[now.getDay()]
 
     const activeSchedule = await prisma.schedule.findFirst({
       where: {
@@ -111,14 +111,14 @@ const checkRoomAccess = async (req, res, next) => {
         room_id: room_id,
         day: currentDay,
         start_time: { lte: currentTime },
-        end_time: { gte: currentTime },
-      },
-    });
+        end_time: { gte: currentTime }
+      }
+    })
 
-    if (activeSchedule) return next();
+    if (activeSchedule) return next()
   }
 
-  return error(res, "You don't have active access to this room", 403);
-};
+  return error(res, "You don't have active access to this room", 403)
+}
 
-module.exports = { authMiddleware, checkPermission, checkRoomAccess };
+module.exports = { authMiddleware, checkPermission, checkRoomAccess }
