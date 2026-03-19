@@ -41,10 +41,10 @@ const login = async (req, res) => {
       }
     })
 
-    if (!user) return error(res, 'Username atau password salah', 401)
+    if (!user) return error(res, 'Invalid username or password', 401)
 
     const isMatch = await bcrypt.compare(password, user.password)
-    if (!isMatch) return error(res, 'Username atau password salah', 401)
+    if (!isMatch) return error(res, 'Invalid username or password', 401)
 
     const { accessToken, refreshToken } = generateTokens(user)
 
