@@ -4,7 +4,7 @@ const { responseHandler } = require("../../config/response");
 const roleController = {
   create: async (req, res) => {
     try {
-      const { name, status, code, access } = req.body;
+      const { name, status, code, access } = req.body || {};
       await prisma.role.create({
         data: {
           name: name,
@@ -29,17 +29,32 @@ const roleController = {
 
   getListRole: async (req, res) => {
     try {
+      const { q, status } = req.query || {};
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.per_page) || 10;
       const skip = (page - 1) * limit;
 
+      let where = {};
+
+      if (q) {
+        where.OR = [
+          { name: { contains: q, mode: "insensitive" } },
+          { code: { contains: q, mode: "insensitive" } },
+        ];
+      }
+
+      if (status !== undefined && status !== "") {
+        where.status = status === "true" || status === true;
+      }
+
       const [roles, total] = await Promise.all([
         prisma.role.findMany({
+          where,
           skip,
           take: limit,
           orderBy: { created_at: "desc" },
         }),
-        prisma.role.count(),
+        prisma.role.count({ where }),
       ]);
 
       const formattedRoles = roles.map((role) => ({
@@ -138,7 +153,7 @@ const roleController = {
   update: async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, status, code, access } = req.body;
+      const { name, status, code, access } = req.body || {};
 
       const roleExists = await prisma.role.findUnique({ where: { id } });
       if (!roleExists) {
@@ -199,38 +214,20 @@ const roleController = {
   toggleStatus: async (req, res) => {
     try {
       const { id } = req.params;
-      const { status } = req.body;
 
-      if (status === undefined) {
-        return responseHandler(res, false, "Status is required", null, 400);
-      }
-
-      if (typeof status !== "boolean") {
-        return responseHandler(
-          res,
-          false,
-          "Status must be a boolean",
-          null,
-          400,
-        );
-      }
-
-      const roleExists = await prisma.role.findUnique({ where: { id } });
-      if (!roleExists) {
+      const role = await prisma.role.findUnique({ where: { id } });
+      if (!role) {
         return responseHandler(res, false, "Role not found", null, 404);
       }
 
+      const newStatus = !role.status;
+
       await prisma.role.update({
         where: { id },
-        data: { status: status },
+        data: { status: newStatus },
       });
 
-      return responseHandler(
-        res,
-        true,
-        "Role status updated successfully",
-        null,
-      );
+      return responseHandler(res, true, "success", null);
     } catch (error) {
       return responseHandler(res, false, error.message, null, 500);
     }

@@ -4,7 +4,7 @@ const { responseHandler } = require("../../config/response");
 const lecturerController = {
   create: async (req, res) => {
     try {
-      const { name, nip, user_id } = req.body;
+      const { name, nip, user_id } = req.body || {};
       const lecturer = await prisma.lecturer.create({
         data: { name, nip, user_id },
       });

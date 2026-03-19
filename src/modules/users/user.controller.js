@@ -13,7 +13,7 @@ const userController = {
         confirm_password,
         role_id,
         status,
-      } = req.body;
+      } = req.body || {};
 
       if (!name || !username || !email || !password || !role_id) {
         return error(res, "Missing required fields", 400);
@@ -59,12 +59,28 @@ const userController = {
 
   getAll: async (req, res) => {
     try {
+      const { q, status } = req.query || {};
       const page = parseInt(req.query.page) || 1;
       const perPage = parseInt(req.query.per_page) || 10;
       const skip = (page - 1) * perPage;
 
+      let where = {};
+
+      if (q) {
+        where.OR = [
+          { name: { contains: q, mode: "insensitive" } },
+          { username: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } },
+        ];
+      }
+
+      if (status !== undefined && status !== "") {
+        where.status = status === "true" || status === true;
+      }
+
       const [users, total] = await Promise.all([
         prisma.user.findMany({
+          where,
           skip,
           take: perPage,
           include: {
@@ -74,7 +90,7 @@ const userController = {
             created_at: "desc",
           },
         }),
-        prisma.user.count(),
+        prisma.user.count({ where }),
       ]);
 
       const formattedData = users.map((user) => ({
@@ -134,7 +150,7 @@ const userController = {
   update: async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, username, email, role_id, status } = req.body;
+      const { name, username, email, role_id, status } = req.body || {};
 
       const userExists = await prisma.user.findUnique({ where: { id } });
       if (!userExists) return error(res, "User not found", 404);
@@ -186,27 +202,18 @@ const userController = {
   toggleStatus: async (req, res) => {
     try {
       const { id } = req.params;
-      const { status } = req.body;
 
-      if (status === undefined) {
-        return error(res, "Status is required", 400);
-      }
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) return error(res, "User not found", 404);
 
-      if (typeof status !== "boolean") {
-        return error(res, "Status must be a boolean", 400);
-      }
-
-      const newStatus = status;
-
-      const userExists = await prisma.user.findUnique({ where: { id } });
-      if (!userExists) return error(res, "User not found", 404);
+      const newStatus = !user.status;
 
       await prisma.user.update({
         where: { id },
         data: { status: newStatus },
       });
 
-      return success(res, "success", null);
+      return success(res, true, "success", null);
     } catch (err) {
       return error(res, err.message, 500);
     }
@@ -215,7 +222,7 @@ const userController = {
   resetPassword: async (req, res) => {
     try {
       const { id } = req.params;
-      const { new_password, confirm_password } = req.body;
+      const { new_password, confirm_password } = req.body || {};
 
       if (!new_password || !confirm_password) {
         return error(res, "Missing required fields", 400);

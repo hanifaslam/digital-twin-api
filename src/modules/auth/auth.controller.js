@@ -22,7 +22,7 @@ const generateTokens = (user) => {
 
 const login = async (req, res) => {
   try {
-    const { login: username, password, remember_me } = req.body;
+    const { login: username, password, remember_me } = req.body || {};
 
     const user = await prisma.user.findFirst({
       where: { username },
@@ -183,7 +183,7 @@ const logout = (req, res) => {
 
 const forgotPassword = async (req, res) => {
   try {
-    const { email } = req.body;
+    const { email } = req.body || {};
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) return error(res, "Email tidak terdaftar", 404);
@@ -209,7 +209,7 @@ const forgotPassword = async (req, res) => {
 const resetPassword = async (req, res) => {
   try {
     const { token } = req.params;
-    const { password, confirm_password } = req.body;
+    const { password, confirm_password } = req.body || {};
 
     if (password !== confirm_password) {
       return error(res, "Konfirmasi password tidak cocok", 400);
@@ -245,7 +245,7 @@ const resetPassword = async (req, res) => {
 
 const changePassword = async (req, res) => {
   try {
-    const { old_password, new_password, confirm_password } = req.body;
+    const { old_password, new_password, confirm_password } = req.body || {};
     const user_id = req.user.id;
 
     if (new_password !== confirm_password) {
