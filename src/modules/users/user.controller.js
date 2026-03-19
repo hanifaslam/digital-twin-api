@@ -13,7 +13,7 @@ const userController = {
         confirm_password,
         role_id,
         status,
-      } = req.body;
+      } = req.body || {};
 
       if (!name || !username || !email || !password || !role_id) {
         return error(res, "Missing required fields", 400);
@@ -134,7 +134,7 @@ const userController = {
   update: async (req, res) => {
     try {
       const { id } = req.params;
-      const { name, username, email, role_id, status } = req.body;
+      const { name, username, email, role_id, status } = req.body || {};
 
       const userExists = await prisma.user.findUnique({ where: { id } });
       if (!userExists) return error(res, "User not found", 404);
@@ -186,27 +186,18 @@ const userController = {
   toggleStatus: async (req, res) => {
     try {
       const { id } = req.params;
-      const { status } = req.body;
 
-      if (status === undefined) {
-        return error(res, "Status is required", 400);
-      }
+      const user = await prisma.user.findUnique({ where: { id } });
+      if (!user) return error(res, "User not found", 404);
 
-      if (typeof status !== "boolean") {
-        return error(res, "Status must be a boolean", 400);
-      }
-
-      const newStatus = status;
-
-      const userExists = await prisma.user.findUnique({ where: { id } });
-      if (!userExists) return error(res, "User not found", 404);
+      const newStatus = !user.status;
 
       await prisma.user.update({
         where: { id },
         data: { status: newStatus },
       });
 
-      return success(res, "success", null);
+      return success(res, true, "success", null);
     } catch (err) {
       return error(res, err.message, 500);
     }
@@ -215,7 +206,7 @@ const userController = {
   resetPassword: async (req, res) => {
     try {
       const { id } = req.params;
-      const { new_password, confirm_password } = req.body;
+      const { new_password, confirm_password } = req.body || {};
 
       if (!new_password || !confirm_password) {
         return error(res, "Missing required fields", 400);
