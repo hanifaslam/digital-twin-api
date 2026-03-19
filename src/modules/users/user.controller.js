@@ -59,12 +59,28 @@ const userController = {
 
   getAll: async (req, res) => {
     try {
+      const { q, status } = req.query || {};
       const page = parseInt(req.query.page) || 1;
       const perPage = parseInt(req.query.per_page) || 10;
       const skip = (page - 1) * perPage;
 
+      let where = {};
+
+      if (q) {
+        where.OR = [
+          { name: { contains: q, mode: "insensitive" } },
+          { username: { contains: q, mode: "insensitive" } },
+          { email: { contains: q, mode: "insensitive" } },
+        ];
+      }
+
+      if (status !== undefined && status !== "") {
+        where.status = status === "true" || status === true;
+      }
+
       const [users, total] = await Promise.all([
         prisma.user.findMany({
+          where,
           skip,
           take: perPage,
           include: {
@@ -74,7 +90,7 @@ const userController = {
             created_at: "desc",
           },
         }),
-        prisma.user.count(),
+        prisma.user.count({ where }),
       ]);
 
       const formattedData = users.map((user) => ({

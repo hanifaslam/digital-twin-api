@@ -29,17 +29,32 @@ const roleController = {
 
   getListRole: async (req, res) => {
     try {
+      const { q, status } = req.query || {};
       const page = parseInt(req.query.page) || 1;
       const limit = parseInt(req.query.per_page) || 10;
       const skip = (page - 1) * limit;
 
+      let where = {};
+
+      if (q) {
+        where.OR = [
+          { name: { contains: q, mode: "insensitive" } },
+          { code: { contains: q, mode: "insensitive" } },
+        ];
+      }
+
+      if (status !== undefined && status !== "") {
+        where.status = status === "true" || status === true;
+      }
+
       const [roles, total] = await Promise.all([
         prisma.role.findMany({
+          where,
           skip,
           take: limit,
           orderBy: { created_at: "desc" },
         }),
-        prisma.role.count(),
+        prisma.role.count({ where }),
       ]);
 
       const formattedRoles = roles.map((role) => ({
