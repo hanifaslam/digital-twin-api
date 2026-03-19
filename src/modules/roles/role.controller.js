@@ -5,22 +5,41 @@ const roleController = {
   create: async (req, res) => {
     try {
       const { name, status, code, access } = req.body || {};
+
+      const checkedIds = [];
+      if (access && Array.isArray(access)) {
+        access.forEach((item) => {
+          if (item.is_checked) {
+            checkedIds.push(item.id);
+          }
+          if (item.children && Array.isArray(item.children)) {
+            item.children.forEach((child) => {
+              if (child.is_checked) {
+                checkedIds.push(child.id);
+              }
+            });
+          }
+        });
+      }
+
+      const validPermissions = await prisma.permission.findMany({
+        where: { id: { in: checkedIds } },
+        select: { id: true },
+      });
+
       await prisma.role.create({
         data: {
           name: name,
           status: status,
           code: code,
           permissions: {
-            create: access
-              ? access
-                  .filter((a) => a.is_checked)
-                  .map((a) => ({
-                    permission_id: a.id,
-                  }))
-              : [],
+            create: validPermissions.map((p) => ({
+              permission_id: p.id,
+            })),
           },
         },
       });
+
       return responseHandler(res, true, "Role created successfully", null, 201);
     } catch (error) {
       return responseHandler(res, false, error.message, null, 400);
