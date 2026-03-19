@@ -40,6 +40,14 @@ const userController = {
 
       const hashedPassword = await bcrypt.hash(password, 10);
 
+      const roleExists = await prisma.role.findUnique({
+        where: { id: role_id },
+      });
+
+      if (!roleExists) {
+        return error(res, "Role not found", 400);
+      }
+
       await prisma.user.create({
         data: {
           name,
@@ -176,6 +184,15 @@ const userController = {
         }
       }
 
+      if (role_id) {
+        const roleExists = await prisma.role.findUnique({
+          where: { id: role_id },
+        });
+        if (!roleExists) {
+          return error(res, "Role not found", 400);
+        }
+      }
+
       let updateData = {
         name,
         username,
@@ -213,7 +230,7 @@ const userController = {
         data: { status: newStatus },
       });
 
-      return success(res, true, "success", null);
+      return success(res, "success");
     } catch (err) {
       return error(res, err.message, 500);
     }

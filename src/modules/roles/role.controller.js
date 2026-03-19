@@ -1,5 +1,5 @@
 const prisma = require("../../config/prisma");
-const { responseHandler } = require("../../config/response");
+const { success, error } = require("../../config/response");
 
 const roleController = {
   getAllRoles: async (req, res) => {
@@ -14,9 +14,9 @@ const roleController = {
         orderBy: { name: "asc" },
       });
 
-      return responseHandler(res, true, "success", roles);
-    } catch (error) {
-      return responseHandler(res, false, error.message, null, 500);
+      return success(res, "success", roles);
+    } catch (err) {
+      return error(res, err.message, 500);
     }
   },
 
@@ -58,9 +58,9 @@ const roleController = {
         },
       });
 
-      return responseHandler(res, true, "Role created successfully", null, 201);
-    } catch (error) {
-      return responseHandler(res, false, error.message, null, 400);
+      return success(res, "success", null, 201);
+    } catch (err) {
+      return error(res, err.message, 400);
     }
   },
 
@@ -110,16 +110,9 @@ const roleController = {
         total_page: Math.ceil(total / limit),
       };
 
-      return responseHandler(
-        res,
-        true,
-        "success",
-        formattedRoles,
-        200,
-        metadata,
-      );
-    } catch (error) {
-      return responseHandler(res, false, error.message, null, 500);
+      return success(res, "success", formattedRoles, 200, metadata);
+    } catch (err) {
+      return error(res, err.message, 500);
     }
   },
 
@@ -135,7 +128,7 @@ const roleController = {
       });
 
       if (!role) {
-        return responseHandler(res, false, "Role not found", null, 404);
+        return error(res, "Role not found", 404);
       }
 
       const rolePermissionIds = role.permissions.map((p) => p.permission_id);
@@ -181,9 +174,9 @@ const roleController = {
         access: access,
       };
 
-      return responseHandler(res, true, "success", formattedData);
-    } catch (error) {
-      return responseHandler(res, false, error.message, null, 500);
+      return success(res, "success", formattedData);
+    } catch (err) {
+      return error(res, err.message, 500);
     }
   },
 
@@ -194,7 +187,7 @@ const roleController = {
 
       const roleExists = await prisma.role.findUnique({ where: { id } });
       if (!roleExists) {
-        return responseHandler(res, false, "Role not found", null, 404);
+        return error(res, "Role not found", 404);
       }
 
       const checkedIds = [];
@@ -242,9 +235,9 @@ const roleController = {
         }
       });
 
-      return responseHandler(res, true, "Role updated successfully", null);
-    } catch (error) {
-      return responseHandler(res, false, error.message, null, 500);
+      return success(res, "success", null);
+    } catch (err) {
+      return error(res, err.message, 500);
     }
   },
 
@@ -264,9 +257,9 @@ const roleController = {
         data: { status: newStatus },
       });
 
-      return responseHandler(res, true, "success", null);
-    } catch (error) {
-      return responseHandler(res, false, error.message, null, 500);
+      return success(res, "success", null);
+    } catch (err) {
+      return error(res, err.message, 500);
     }
   },
 };
