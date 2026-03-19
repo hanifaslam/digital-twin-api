@@ -2,6 +2,24 @@ const prisma = require("../../config/prisma");
 const { responseHandler } = require("../../config/response");
 
 const roleController = {
+  getAllRoles: async (req, res) => {
+    try {
+      const roles = await prisma.role.findMany({
+        where: { status: true },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+        },
+        orderBy: { name: "asc" },
+      });
+
+      return responseHandler(res, true, "success", roles);
+    } catch (error) {
+      return responseHandler(res, false, error.message, null, 500);
+    }
+  },
+
   create: async (req, res) => {
     try {
       const { name, status, code, access } = req.body || {};
