@@ -3,6 +3,8 @@ const express = require("express");
 const cookieParser = require("cookie-parser");
 const cors = require("cors");
 const routes = require("./routes");
+const { error } = require("./config/response");
+
 
 const app = express();
 
@@ -46,10 +48,19 @@ app.get("/health", (req, res) => {
 // Main Routes
 app.use("/api", routes);
 
+// 404 Handler
+app.use((req, res) => {
+  return error(res, `Route ${req.method} ${req.originalUrl} not found`, 404);
+});
+
 // Error Handling
 app.use((err, req, res, next) => {
   console.error(err.stack);
-  res.status(500).json({ error: "Something went wrong!" });
+  return error(
+    res,
+    process.env.NODE_ENV === "development" ? err.message : "Something went wrong!",
+    500,
+  );
 });
 
 const PORT = process.env.PORT || 3000;
