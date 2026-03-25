@@ -50,8 +50,9 @@ const login = async (req, res) => {
 
     const cookieOptions = {
       httpOnly: true,
-      secure: true,
-      sameSite: 'none'
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      path: '/'
     }
 
     res.cookie('accessToken', accessToken, {
@@ -102,8 +103,9 @@ const refreshToken = async (req, res) => {
       // Update Access Token Cookie
       res.cookie('accessToken', accessToken, {
         httpOnly: true,
-        secure: true,
-        sameSite: 'none',
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        path: '/',
         maxAge: 15 * 60 * 1000
       })
 
