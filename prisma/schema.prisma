@@ -76,13 +76,15 @@ model Room {
 }
 
 model Lecturer {
-  id          String       @id @default(cuid())
-  name        String
-  nip         String       @unique
-  user_id     String       @unique
-  user        User         @relation(fields: [user_id], references: [id])
-  schedules   Schedule[]
-  attendances Attendance[]
+  id               String       @id @default(cuid())
+  nip              String       @unique
+  study_program_id String
+  user_id          String       @unique
+  user             User         @relation(fields: [user_id], references: [id])
+  schedules        Schedule[]
+  attendances      Attendance[]
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
 }
 
 model Schedule {
