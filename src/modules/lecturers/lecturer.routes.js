@@ -5,5 +5,7 @@ const lecturerController = require('./lecturer.controller')
 router.post('/', lecturerController.create)
 router.get('/', lecturerController.getAll)
 router.get('/:id', lecturerController.getById)
+router.patch('/:id', lecturerController.update)
+router.delete('/:id', lecturerController.delete)
 
 module.exports = router

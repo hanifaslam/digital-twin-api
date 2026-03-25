@@ -6,6 +6,7 @@ const routes = require('./routes')
 const { error } = require('./config/response')
 
 const app = express()
+app.set('trust proxy', 1)
 
 app.use(
   cors({
