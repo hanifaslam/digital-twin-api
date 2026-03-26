@@ -31,7 +31,8 @@ const buildingController = {
         data: {
           name,
           code,
-          status: status !== undefined ? (status === 'true' || status === true) : true
+          status:
+            status !== undefined ? status === 'true' || status === true : true
         }
       })
 
@@ -90,12 +91,7 @@ const buildingController = {
     try {
       const { id } = req.params
       const building = await prisma.building.findUnique({
-        where: { id },
-        include: {
-          _count: {
-            select: { rooms: true }
-          }
-        }
+        where: { id }
       })
 
       if (!building) return error(res, 'Building not found', 404)
@@ -139,7 +135,10 @@ const buildingController = {
       let updateData = {
         name,
         code,
-        status: status !== undefined ? (status === 'true' || status === true) : undefined
+        status:
+          status !== undefined
+            ? status === 'true' || status === true
+            : undefined
       }
 
       Object.keys(updateData).forEach(

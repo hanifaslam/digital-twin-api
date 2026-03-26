@@ -85,7 +85,19 @@ const roomController = {
         total_page: Math.ceil(total / perPage)
       }
 
-      return success(res, 'success', rooms, 200, metadata)
+      const formattedRooms = rooms.map((room) => {
+        const { building, floor, status, created_at, updated_at, ...roomData } = room
+        return {
+          ...roomData,
+          building_name: building?.name,
+          floor,
+          status,
+          created_at,
+          updated_at
+        }
+      })
+
+      return success(res, 'success', formattedRooms, 200, metadata)
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -103,7 +115,17 @@ const roomController = {
 
       if (!room) return error(res, 'Room not found', 404)
 
-      return success(res, 'success', room)
+      const { building, floor, status, created_at, updated_at, ...roomData } = room
+      const formattedRoom = {
+        ...roomData,
+        building_name: building?.name,
+        floor,
+        status,
+        created_at,
+        updated_at
+      }
+
+      return success(res, 'success', formattedRoom)
     } catch (err) {
       return error(res, err.message, 500)
     }
