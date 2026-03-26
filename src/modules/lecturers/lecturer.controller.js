@@ -1,5 +1,6 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const redisClient = require('../../config/redis')
 
 const lecturerController = {
   create: async (req, res) => {
@@ -44,6 +45,9 @@ const lecturerController = {
           user_id
         }
       })
+
+      // Invalidate associated user cache
+      await redisClient.del(`user:auth:${user_id}`).catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null, 201)
     } catch (err) {
@@ -207,6 +211,14 @@ const lecturerController = {
         data: updateData
       })
 
+      // Invalidate current associated user cache
+      await redisClient.del(`user:auth:${lecturerExists.user_id}`).catch((err) => console.error('Redis Del Error:', err))
+      
+      // If user_id was changed, also invalidate the new user's cache
+      if (user_id && user_id !== lecturerExists.user_id) {
+        await redisClient.del(`user:auth:${user_id}`).catch((err) => console.error('Redis Del Error:', err))
+      }
+
       return success(res, 'success', null)
     } catch (err) {
       return error(res, err.message, 500)
@@ -220,6 +232,9 @@ const lecturerController = {
       if (!lecturer) return error(res, 'Lecturer not found', 404)
 
       await prisma.lecturer.delete({ where: { id } })
+
+      // Invalidate associated user cache
+      await redisClient.del(`user:auth:${lecturer.user_id}`).catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null)
     } catch (err) {

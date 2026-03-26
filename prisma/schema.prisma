@@ -52,9 +52,6 @@ model Module {
   created_at  DateTime     @default(now())
 }
 
-
-
-
 model RolePermission {
   role_id       String
   permission_id String
@@ -67,12 +64,29 @@ model RolePermission {
 model Room {
   id            String         @id @default(cuid())
   name          String
-  building      String
-  status        Status         @default(INACTIVE)
+  building_id   String
+  building      Building       @relation(fields: [building_id], references: [id])
+  floor         Int            @default(1)
+  status        Boolean        @default(true)
   schedules     Schedule[]
   attendances   Attendance[]
   device_status DeviceStatus?
   sensor_logs   SensorLog[]
+  created_at    DateTime       @default(now())
+  updated_at    DateTime       @updatedAt
+
+  @@index([building_id])
+  @@index([floor])
+}
+
+model Building {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  code        String?  @unique
+  status      Boolean  @default(true)
+  rooms       Room[]
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 }
 
 model Lecturer {
@@ -86,6 +100,8 @@ model Lecturer {
   attendances      Attendance[]
   created_at       DateTime     @default(now())
   updated_at       DateTime     @updatedAt
+
+  @@index([study_program_id])
 }
 
 model StudyProgram {
@@ -152,7 +168,4 @@ model SensorLog {
 }
 
 
-enum Status {
-  ACTIVE
-  INACTIVE
-}
+
