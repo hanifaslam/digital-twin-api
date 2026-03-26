@@ -7,6 +7,8 @@ const { authMiddleware } = require('../common/middlewares/auth.middleware')
 const roleRoutes = require('../modules/roles/role.routes')
 const permissionRoutes = require('../modules/permissions/permission.routes')
 const studyProgramRoutes = require('../modules/study-programs/study-program.routes')
+const roomRoutes = require('../modules/rooms/room.routes')
+const buildingRoutes = require('../modules/buildings/building.routes')
 
 router.use('/auth', authRoutes)
 
@@ -15,5 +17,7 @@ router.use('/lecturers', authMiddleware, lecturerRoutes)
 router.use('/roles', authMiddleware, roleRoutes)
 router.use('/permissions', permissionRoutes)
 router.use('/study-programs', authMiddleware, studyProgramRoutes)
+router.use('/rooms', authMiddleware, roomRoutes)
+router.use('/buildings', authMiddleware, buildingRoutes)
 
 module.exports = router
