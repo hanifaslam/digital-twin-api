@@ -72,6 +72,7 @@ model Room {
   attendances   Attendance[]
   device_status DeviceStatus?
   sensor_logs   SensorLog[]
+  devices       Device[]
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
 
@@ -165,6 +166,27 @@ model SensorLog {
 
   @@index([room_id])
   @@index([created_at])
+}
+
+model Device {
+  id         String     @id @default(cuid())
+  name       String
+  type       DeviceType
+  room_id    String
+  room       Room       @relation(fields: [room_id], references: [id])
+  mqtt_topic String?
+  stream_url String?
+  status     Boolean    @default(true)
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
+
+  @@index([room_id])
+}
+
+enum DeviceType {
+  AC
+  LAMP
+  CCTV
 }
 
 

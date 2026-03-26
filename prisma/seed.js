@@ -46,7 +46,8 @@ async function main() {
     { name: 'BUILDING', module_code: 'master' },
     { name: 'ROOM', module_code: 'master' },
     { name: 'STUDY_PROGRAM', module_code: 'master' },
-    { name: 'LECTURER', module_code: 'master' }
+    { name: 'LECTURER', module_code: 'master' },
+    { name: 'DEVICE', module_code: 'master' }
   ]
   const perms = {}
   for (const p of permissionsData) {
