@@ -74,6 +74,9 @@ model Room {
   sensor_logs   SensorLog[]
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
+
+  @@index([building_id])
+  @@index([floor])
 }
 
 model Building {
@@ -97,6 +100,8 @@ model Lecturer {
   attendances      Attendance[]
   created_at       DateTime     @default(now())
   updated_at       DateTime     @updatedAt
+
+  @@index([study_program_id])
 }
 
 model StudyProgram {

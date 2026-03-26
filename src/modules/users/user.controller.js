@@ -1,6 +1,7 @@
 const prisma = require('../../config/prisma')
 const bcrypt = require('bcryptjs')
 const { success, error } = require('../../config/response')
+const redisClient = require('../../config/redis')
 
 const userController = {
   create: async (req, res) => {
@@ -214,6 +215,9 @@ const userController = {
         data: updateData
       })
 
+      // Invalidate Redis cache
+      await redisClient.del(`user:auth:${id}`).catch((err) => console.error('Redis Del Error:', err))
+
       return success(res, 'success', null)
     } catch (err) {
       return error(res, err.message, 500)
@@ -233,6 +237,9 @@ const userController = {
         where: { id },
         data: { status: newStatus }
       })
+
+      // Invalidate Redis cache
+      await redisClient.del(`user:auth:${id}`).catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success')
     } catch (err) {
@@ -262,6 +269,9 @@ const userController = {
         where: { id },
         data: { password: hashedPassword }
       })
+
+      // Invalidate Redis cache
+      await redisClient.del(`user:auth:${id}`).catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null)
     } catch (err) {
