@@ -21,7 +21,8 @@
     "jsonwebtoken": "^9.0.3",
     "pg": "^8.19.0",
     "prisma": "^7.4.2",
-    "redis": "^5.11.0"
+    "redis": "^5.11.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@types/node": "^25.3.3",
