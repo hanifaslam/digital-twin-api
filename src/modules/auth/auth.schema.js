@@ -1,5 +1,9 @@
 const { z } = require('zod')
 
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/
+const passwordErrorMessage =
+  'Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one special character (!@#$%^&*)'
+
 const loginSchema = z.object({
   login: z.string().min(1, 'Username is required'),
   password: z
@@ -8,10 +12,6 @@ const loginSchema = z.object({
     .regex(passwordRegex, passwordErrorMessage),
   remember_me: z.boolean().optional()
 })
-
-const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/
-const passwordErrorMessage =
-  'Password must be at least 8 characters and contain at least one uppercase letter, one lowercase letter, one number, and one special character (!@#$%^&*)'
 
 const forgotPasswordSchema = z.object({
   email: z.email('Invalid email format')
