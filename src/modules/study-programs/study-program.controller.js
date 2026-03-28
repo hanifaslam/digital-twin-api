@@ -63,6 +63,14 @@ const studyProgramController = {
   getAll: async (req, res) => {
     try {
       const { q, status } = req.query || {}
+      const statuses = [
+        ...new Set(
+          status
+            ?.split(',')
+            .map((item) => item.trim().toLowerCase())
+            .filter((item) => item === 'true' || item === 'false')
+        )
+      ]
       const page = parseInt(req.query.page) || 1
       const perPage = parseInt(req.query.per_page) || 10
       const skip = (page - 1) * perPage
@@ -76,9 +84,10 @@ const studyProgramController = {
         ]
       }
 
-      if (status !== undefined && status !== '') {
-        where.status = status === 'true' || status === true
+      if (statuses?.length === 1) {
+        where.status = statuses[0] === 'true'
       }
+
 
       const [studyPrograms, total] = await Promise.all([
         prisma.studyProgram.findMany({
