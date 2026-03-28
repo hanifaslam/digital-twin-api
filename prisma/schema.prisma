@@ -90,6 +90,14 @@ model Building {
   updated_at  DateTime @updatedAt
 }
 
+model MasterFloor {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  status      Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+}
+
 model Lecturer {
   id               String                @id @default(cuid())
   nip              String                @unique
