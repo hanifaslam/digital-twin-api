@@ -15,6 +15,7 @@ async function main() {
   await prisma.deviceStatus.deleteMany({})
   await prisma.attendance.deleteMany({})
   await prisma.schedule.deleteMany({})
+  await prisma.lecturerStudyProgram.deleteMany({})
   await prisma.lecturer.deleteMany({})
   await prisma.user.deleteMany({})
   await prisma.room.deleteMany({})
@@ -132,7 +133,7 @@ async function main() {
   await prisma.user.create({
     data: {
       name: 'Super Admin',
-      username: 'superadmin',
+      username: 'Superadmin',
       email: 'admin@twin.com',
       password: hashedPassword,
       role_id: roles['SA'].id
@@ -173,7 +174,13 @@ async function main() {
         data: {
           nip: `NIP100${i + 1}`,
           user_id: user.id,
-          study_program_id: studyPrograms[i % studyPrograms.length].id
+          study_programs: {
+            create: [
+              {
+                study_program_id: studyPrograms[i % studyPrograms.length].id
+              }
+            ]
+          }
         }
       })
     )

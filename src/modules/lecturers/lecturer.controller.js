@@ -2,12 +2,49 @@ const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const redisClient = require('../../config/redis')
 
+const normalizeStudyProgramIds = (studyProgramIds) => [
+  ...new Set((studyProgramIds || []).map((id) => id?.trim()).filter(Boolean))
+]
+
+const includeLecturerRelations = {
+  study_programs: {
+    include: {
+      study_program: {
+        select: {
+          id: true,
+          name: true,
+          code: true
+        }
+      }
+    }
+  },
+  user: {
+    select: {
+      id: true,
+      name: true,
+      username: true,
+      email: true,
+      role: true
+    }
+  }
+}
+
+const formatStudyProgramsForShow = (studyPrograms = []) =>
+  studyPrograms.map((item) => ({
+    id: item.study_program.id,
+    name: item.study_program.name
+  }))
+
+const formatStudyProgramsForList = (studyPrograms = []) =>
+  studyPrograms.map((item) => item.study_program.name)
+
 const lecturerController = {
   create: async (req, res) => {
     try {
-      const { nip, study_program_id, user_id } = req.body || {}
+      const { nip, study_program_ids, user_id } = req.body || {}
+      const uniqueStudyProgramIds = normalizeStudyProgramIds(study_program_ids)
 
-      if (!nip || !study_program_id || !user_id) {
+      if (!nip || uniqueStudyProgramIds.length === 0 || !user_id) {
         return error(res, 'Missing required fields', 400)
       }
 
@@ -38,15 +75,31 @@ const lecturerController = {
         return error(res, 'User not found', 400)
       }
 
-      const lecturer = await prisma.lecturer.create({
-        data: {
-          nip,
-          study_program_id,
-          user_id
+      const studyPrograms = await prisma.studyProgram.findMany({
+        where: {
+          id: { in: uniqueStudyProgramIds }
+        },
+        select: {
+          id: true
         }
       })
 
-      // Invalidate associated user cache
+      if (studyPrograms.length !== uniqueStudyProgramIds.length) {
+        return error(res, 'One or more study programs not found', 400)
+      }
+
+      await prisma.lecturer.create({
+        data: {
+          nip,
+          user_id,
+          study_programs: {
+            create: uniqueStudyProgramIds.map((study_program_id) => ({
+              study_program_id
+            }))
+          }
+        }
+      })
+
       await redisClient
         .del(`user:auth:${user_id}`)
         .catch((err) => console.error('Redis Del Error:', err))
@@ -61,6 +114,10 @@ const lecturerController = {
     try {
       const { q, study_program } = req.query || {}
       const search = q?.trim()
+      const studyProgramIds = study_program
+        ?.split(',')
+        .map((id) => id.trim())
+        .filter(Boolean)
       const page = parseInt(req.query.page) || 1
       const perPage = parseInt(req.query.per_page) || 10
       const skip = (page - 1) * perPage
@@ -75,8 +132,14 @@ const lecturerController = {
         ]
       }
 
-      if (study_program) {
-        where.study_program_id = study_program
+      if (studyProgramIds?.length) {
+        where.study_programs = {
+          some: {
+            study_program_id: {
+              in: studyProgramIds
+            }
+          }
+        }
       }
 
       const [lecturers, total] = await Promise.all([
@@ -84,24 +147,7 @@ const lecturerController = {
           where,
           skip,
           take: perPage,
-          include: {
-            study_program: {
-              select: {
-                id: true,
-                name: true,
-                code: true
-              }
-            },
-            user: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
-                email: true,
-                role: true
-              }
-            }
-          },
+          include: includeLecturerRelations,
           orderBy: {
             created_at: 'desc'
           }
@@ -111,10 +157,11 @@ const lecturerController = {
 
       const formattedData = lecturers.map((lecturer) => ({
         id: lecturer.id,
+        user_id: lecturer.user_id,
         name: lecturer.user?.name,
         email: lecturer.user?.email,
         nip: lecturer.nip,
-        study_program_name: lecturer.study_program?.name,
+        study_program: formatStudyProgramsForList(lecturer.study_programs),
         created_at: lecturer.created_at,
         updated_at: lecturer.updated_at
       }))
@@ -137,17 +184,7 @@ const lecturerController = {
       const { id } = req.params
       const lecturer = await prisma.lecturer.findUnique({
         where: { id },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-              email: true,
-              role: true
-            }
-          }
-        }
+        include: includeLecturerRelations
       })
 
       if (!lecturer) return error(res, 'Lecturer not found', 404)
@@ -155,9 +192,10 @@ const lecturerController = {
       const formattedData = {
         id: lecturer.id,
         nip: lecturer.nip,
-        study_program_id: lecturer.study_program_id,
         user_id: lecturer.user_id,
         name: lecturer.user?.name,
+        email: lecturer.user?.email,
+        study_program: formatStudyProgramsForShow(lecturer.study_programs),
         created_at: lecturer.created_at,
         updated_at: lecturer.updated_at
       }
@@ -171,7 +209,10 @@ const lecturerController = {
   update: async (req, res) => {
     try {
       const { id } = req.params
-      const { nip, study_program_id, user_id } = req.body || {}
+      const { nip, study_program_ids, user_id } = req.body || {}
+      const uniqueStudyProgramIds = study_program_ids
+        ? normalizeStudyProgramIds(study_program_ids)
+        : undefined
 
       const lecturerExists = await prisma.lecturer.findUnique({ where: { id } })
       if (!lecturerExists) return error(res, 'Lecturer not found', 404)
@@ -209,9 +250,27 @@ const lecturerController = {
         }
       }
 
+      if (study_program_ids && uniqueStudyProgramIds.length === 0) {
+        return error(res, 'At least one study program ID is required', 400)
+      }
+
+      if (uniqueStudyProgramIds) {
+        const studyPrograms = await prisma.studyProgram.findMany({
+          where: {
+            id: { in: uniqueStudyProgramIds }
+          },
+          select: {
+            id: true
+          }
+        })
+
+        if (studyPrograms.length !== uniqueStudyProgramIds.length) {
+          return error(res, 'One or more study programs not found', 400)
+        }
+      }
+
       let updateData = {
         nip,
-        study_program_id,
         user_id
       }
 
@@ -219,17 +278,30 @@ const lecturerController = {
         (key) => updateData[key] === undefined && delete updateData[key]
       )
 
-      await prisma.lecturer.update({
-        where: { id },
-        data: updateData
+      await prisma.$transaction(async (tx) => {
+        await tx.lecturer.update({
+          where: { id },
+          data: updateData
+        })
+
+        if (uniqueStudyProgramIds) {
+          await tx.lecturerStudyProgram.deleteMany({
+            where: { lecturer_id: id }
+          })
+
+          await tx.lecturerStudyProgram.createMany({
+            data: uniqueStudyProgramIds.map((study_program_id) => ({
+              lecturer_id: id,
+              study_program_id
+            }))
+          })
+        }
       })
 
-      // Invalidate current associated user cache
       await redisClient
         .del(`user:auth:${lecturerExists.user_id}`)
         .catch((err) => console.error('Redis Del Error:', err))
 
-      // If user_id was changed, also invalidate the new user's cache
       if (user_id && user_id !== lecturerExists.user_id) {
         await redisClient
           .del(`user:auth:${user_id}`)
@@ -250,7 +322,6 @@ const lecturerController = {
 
       await prisma.lecturer.delete({ where: { id } })
 
-      // Invalidate associated user cache
       await redisClient
         .del(`user:auth:${lecturer.user_id}`)
         .catch((err) => console.error('Redis Del Error:', err))

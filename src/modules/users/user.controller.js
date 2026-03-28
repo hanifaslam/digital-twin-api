@@ -70,7 +70,8 @@ const userController = {
     try {
       const { role } = req.query || {}
       const where = {
-        status: true
+        status: true,
+        lecturer: null
       }
 
       if (role) {
