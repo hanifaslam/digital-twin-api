@@ -24,6 +24,7 @@ const includeLecturerRelations = {
       name: true,
       username: true,
       email: true,
+      status: true,
       role: true
     }
   }
@@ -160,6 +161,7 @@ const lecturerController = {
         user_id: lecturer.user_id,
         name: lecturer.user?.name,
         email: lecturer.user?.email,
+        status: lecturer.user?.status ?? false,
         nip: lecturer.nip,
         study_program: formatStudyProgramsForList(lecturer.study_programs),
         created_at: lecturer.created_at,
@@ -195,6 +197,7 @@ const lecturerController = {
         user_id: lecturer.user_id,
         name: lecturer.user?.name,
         email: lecturer.user?.email,
+        status: lecturer.user?.status ?? false,
         study_program: formatStudyProgramsForShow(lecturer.study_programs),
         created_at: lecturer.created_at,
         updated_at: lecturer.updated_at
