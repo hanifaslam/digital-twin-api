@@ -5,6 +5,7 @@ const { validate } = require('../../common/middlewares/validate.middleware')
 const { createStudyProgramSchema, updateStudyProgramSchema } = require('./study-program.schema')
 
 router.post('/', validate(createStudyProgramSchema), studyProgramController.create)
+router.get('/all', studyProgramController.getAllStudyPrograms)
 router.get('/', studyProgramController.getAll)
 router.get('/:id', studyProgramController.getById)
 router.patch('/:id', validate(updateStudyProgramSchema), studyProgramController.update)

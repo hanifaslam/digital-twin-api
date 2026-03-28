@@ -66,6 +66,37 @@ const userController = {
     }
   },
 
+  getAllUsers: async (req, res) => {
+    try {
+      const { role } = req.query || {}
+      const where = {
+        status: true
+      }
+
+      if (role) {
+        where.role = {
+          code: role
+        }
+      }
+
+      const users = await prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          email: true
+        },
+        orderBy: {
+          name: 'asc'
+        }
+      })
+
+      return success(res, 'success', users)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
   getAll: async (req, res) => {
     try {
       const { q, status, role } = req.query || {}
@@ -216,7 +247,9 @@ const userController = {
       })
 
       // Invalidate Redis cache
-      await redisClient.del(`user:auth:${id}`).catch((err) => console.error('Redis Del Error:', err))
+      await redisClient
+        .del(`user:auth:${id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null)
     } catch (err) {
@@ -239,7 +272,9 @@ const userController = {
       })
 
       // Invalidate Redis cache
-      await redisClient.del(`user:auth:${id}`).catch((err) => console.error('Redis Del Error:', err))
+      await redisClient
+        .del(`user:auth:${id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success')
     } catch (err) {
@@ -271,7 +306,9 @@ const userController = {
       })
 
       // Invalidate Redis cache
-      await redisClient.del(`user:auth:${id}`).catch((err) => console.error('Redis Del Error:', err))
+      await redisClient
+        .del(`user:auth:${id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null)
     } catch (err) {

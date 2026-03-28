@@ -47,7 +47,9 @@ const lecturerController = {
       })
 
       // Invalidate associated user cache
-      await redisClient.del(`user:auth:${user_id}`).catch((err) => console.error('Redis Del Error:', err))
+      await redisClient
+        .del(`user:auth:${user_id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null, 201)
     } catch (err) {
@@ -57,19 +59,24 @@ const lecturerController = {
 
   getAll: async (req, res) => {
     try {
-      const { q } = req.query || {}
+      const { q, study_program } = req.query || {}
+      const search = q?.trim()
       const page = parseInt(req.query.page) || 1
       const perPage = parseInt(req.query.per_page) || 10
       const skip = (page - 1) * perPage
 
       let where = {}
 
-      if (q) {
+      if (search) {
         where.OR = [
-          { nip: { contains: q, mode: 'insensitive' } },
-          { user: { name: { contains: q, mode: 'insensitive' } } },
-          { user: { email: { contains: q, mode: 'insensitive' } } }
+          { nip: { contains: search, mode: 'insensitive' } },
+          { user: { name: { contains: search, mode: 'insensitive' } } },
+          { user: { email: { contains: search, mode: 'insensitive' } } }
         ]
+      }
+
+      if (study_program) {
+        where.study_program_id = study_program
       }
 
       const [lecturers, total] = await Promise.all([
@@ -78,6 +85,13 @@ const lecturerController = {
           skip,
           take: perPage,
           include: {
+            study_program: {
+              select: {
+                id: true,
+                name: true,
+                code: true
+              }
+            },
             user: {
               select: {
                 id: true,
@@ -97,11 +111,10 @@ const lecturerController = {
 
       const formattedData = lecturers.map((lecturer) => ({
         id: lecturer.id,
-        study_program_id: lecturer.study_program_id,
-        user_id: lecturer.user_id,
         name: lecturer.user?.name,
         email: lecturer.user?.email,
         nip: lecturer.nip,
+        study_program_name: lecturer.study_program?.name,
         created_at: lecturer.created_at,
         updated_at: lecturer.updated_at
       }))
@@ -212,11 +225,15 @@ const lecturerController = {
       })
 
       // Invalidate current associated user cache
-      await redisClient.del(`user:auth:${lecturerExists.user_id}`).catch((err) => console.error('Redis Del Error:', err))
-      
+      await redisClient
+        .del(`user:auth:${lecturerExists.user_id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
+
       // If user_id was changed, also invalidate the new user's cache
       if (user_id && user_id !== lecturerExists.user_id) {
-        await redisClient.del(`user:auth:${user_id}`).catch((err) => console.error('Redis Del Error:', err))
+        await redisClient
+          .del(`user:auth:${user_id}`)
+          .catch((err) => console.error('Redis Del Error:', err))
       }
 
       return success(res, 'success', null)
@@ -234,7 +251,9 @@ const lecturerController = {
       await prisma.lecturer.delete({ where: { id } })
 
       // Invalidate associated user cache
-      await redisClient.del(`user:auth:${lecturer.user_id}`).catch((err) => console.error('Redis Del Error:', err))
+      await redisClient
+        .del(`user:auth:${lecturer.user_id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null)
     } catch (err) {

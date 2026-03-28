@@ -39,6 +39,27 @@ const studyProgramController = {
     }
   },
 
+  getAllStudyPrograms: async (req, res) => {
+    try {
+      const studyPrograms = await prisma.studyProgram.findMany({
+        where: {
+          status: true
+        },
+        select: {
+          id: true,
+          name: true
+        },
+        orderBy: {
+          name: 'asc'
+        }
+      })
+
+      return success(res, 'success', studyPrograms)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
   getAll: async (req, res) => {
     try {
       const { q, status } = req.query || {}

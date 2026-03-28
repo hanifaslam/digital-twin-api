@@ -181,14 +181,65 @@ const roomController = {
     try {
       const { id } = req.params
       const roomExists = await prisma.room.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              schedules: true,
+              attendances: true,
+              sensor_logs: true,
+              devices: true
+            }
+          },
+          device_status: {
+            select: { id: true }
+          }
+        }
       })
       if (!roomExists) return error(res, 'Room not found', 404)
+
+      const dependencies = []
+
+      if (roomExists._count.schedules > 0) {
+        dependencies.push('schedule')
+      }
+
+      if (roomExists._count.attendances > 0) {
+        dependencies.push('attendance')
+      }
+
+      if (roomExists._count.sensor_logs > 0) {
+        dependencies.push('sensor log')
+      }
+
+      if (roomExists._count.devices > 0) {
+        dependencies.push('device')
+      }
+
+      if (roomExists.device_status) {
+        dependencies.push('device status')
+      }
+
+      if (dependencies.length > 0) {
+        return error(
+          res,
+          `Cannot delete room because it is still used by: ${dependencies.join(', ')}`,
+          400
+        )
+      }
 
       await prisma.room.delete({ where: { id } })
 
       return success(res, 'success', null)
     } catch (err) {
+      if (err.code === 'P2003') {
+        return error(
+          res,
+          'Cannot delete room because it is still referenced by related data',
+          400
+        )
+      }
+
       return error(res, err.message, 500)
     }
   },
