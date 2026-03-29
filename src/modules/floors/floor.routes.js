@@ -1,17 +1,18 @@
 const express = require('express')
 const router = express.Router()
-const masterFloorController = require('./master-floor.controller')
+const masterFloorController = require('./floor.controller')
 const { validate } = require('../../common/middlewares/validate.middleware')
 const {
   createMasterFloorSchema,
   updateMasterFloorSchema
-} = require('./master-floor.schema')
+} = require('./floor.schema')
 
 router.post(
   '/',
   validate(createMasterFloorSchema),
   masterFloorController.create
 )
+router.get('/all', masterFloorController.getAllFloor)
 router.get('/', masterFloorController.getAll)
 router.get('/:id', masterFloorController.getById)
 router.patch(

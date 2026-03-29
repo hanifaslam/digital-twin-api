@@ -4,9 +4,9 @@ const { success, error } = require('../../config/response')
 const roomController = {
   create: async (req, res) => {
     try {
-      const { name, building_id, floor, status } = req.body || {}
+      const { name, building_id, floor_id, status } = req.body || {}
 
-      if (!name || !building_id || floor === undefined) {
+      if (!name || !building_id || !floor_id) {
         return error(res, 'Missing required fields', 400)
       }
 
@@ -18,11 +18,30 @@ const roomController = {
         return error(res, 'Room name already exists in this building', 400)
       }
 
+      const [buildingExists, floorExists] = await Promise.all([
+        prisma.building.findUnique({
+          where: { id: building_id },
+          select: { id: true }
+        }),
+        prisma.masterFloor.findUnique({
+          where: { id: floor_id },
+          select: { id: true }
+        })
+      ])
+
+      if (!buildingExists) {
+        return error(res, 'Building not found', 400)
+      }
+
+      if (!floorExists) {
+        return error(res, 'Floor not found', 400)
+      }
+
       await prisma.room.create({
         data: {
           name,
           building_id,
-          floor: parseInt(floor),
+          floor_id,
           status: status !== undefined ? (status === 'true' || status === true) : true
         }
       })
@@ -35,7 +54,7 @@ const roomController = {
 
   getAll: async (req, res) => {
     try {
-      const { q, status, building_id, floor } = req.query || {}
+      const { q, status, building_id, floor_id } = req.query || {}
       const statuses = [
         ...new Set(
           status
@@ -66,8 +85,8 @@ const roomController = {
         where.building_id = building_id
       }
 
-      if (floor) {
-        where.floor = parseInt(floor)
+      if (floor_id) {
+        where.floor_id = floor_id
       }
 
       const [rooms, total] = await Promise.all([
@@ -76,6 +95,9 @@ const roomController = {
           include: {
             building: {
               select: { id: true, name: true, code: true }
+            },
+            floor: {
+              select: { id: true, name: true }
             }
           },
           skip,
@@ -99,7 +121,7 @@ const roomController = {
         return {
           ...roomData,
           building_name: building?.name,
-          floor,
+          floor_name: floor?.name,
           status,
           created_at,
           updated_at
@@ -118,7 +140,8 @@ const roomController = {
       const room = await prisma.room.findUnique({
         where: { id },
         include: {
-          building: true
+          building: true,
+          floor: true
         }
       })
 
@@ -128,7 +151,7 @@ const roomController = {
       const formattedRoom = {
         ...roomData,
         building_name: building?.name,
-        floor,
+        floor_name: floor?.name,
         status,
         created_at,
         updated_at
@@ -143,7 +166,7 @@ const roomController = {
   update: async (req, res) => {
     try {
       const { id } = req.params
-      const { name, building_id, floor, status } = req.body || {}
+      const { name, building_id, floor_id, status } = req.body || {}
 
       const roomExists = await prisma.room.findUnique({
         where: { id }
@@ -164,10 +187,32 @@ const roomController = {
         }
       }
 
+      if (building_id) {
+        const buildingExists = await prisma.building.findUnique({
+          where: { id: building_id },
+          select: { id: true }
+        })
+
+        if (!buildingExists) {
+          return error(res, 'Building not found', 400)
+        }
+      }
+
+      if (floor_id) {
+        const floorExists = await prisma.masterFloor.findUnique({
+          where: { id: floor_id },
+          select: { id: true }
+        })
+
+        if (!floorExists) {
+          return error(res, 'Floor not found', 400)
+        }
+      }
+
       let updateData = {
         name,
         building_id,
-        floor: floor !== undefined ? parseInt(floor) : undefined,
+        floor_id,
         status: status !== undefined ? (status === 'true' || status === true) : undefined
       }
 

@@ -19,6 +19,7 @@ async function main() {
   await prisma.lecturer.deleteMany({})
   await prisma.user.deleteMany({})
   await prisma.room.deleteMany({})
+  await prisma.masterFloor.deleteMany({})
   await prisma.building.deleteMany({})
   await prisma.studyProgram.deleteMany({})
   await prisma.rolePermission.deleteMany({})
@@ -114,7 +115,20 @@ async function main() {
     studyPrograms.push(await prisma.studyProgram.create({ data: s }))
   }
 
-  // 6. Rooms (5)
+  // 6. Master Floors (5)
+  const floorsData = [
+    { name: 'Lantai 1' },
+    { name: 'Lantai 2' },
+    { name: 'Lantai 3' },
+    { name: 'Lantai 4' },
+    { name: 'Lantai 5' }
+  ]
+  const floors = []
+  for (const floor of floorsData) {
+    floors.push(await prisma.masterFloor.create({ data: floor }))
+  }
+
+  // 7. Rooms (5)
   const rooms = []
   for (let i = 0; i < 5; i++) {
     rooms.push(
@@ -122,13 +136,13 @@ async function main() {
         data: {
           name: `Room 1.${i + 1}`,
           building_id: buildings[i].id,
-          floor: 1
+          floor_id: floors[i].id
         }
       })
     )
   }
 
-  // 7. Users & Lecturers (5)
+  // 8. Users & Lecturers (5)
   // Super Admin
   await prisma.user.create({
     data: {
@@ -186,7 +200,7 @@ async function main() {
     )
   }
 
-  // 8. Schedules (5)
+  // 9. Schedules (5)
   const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat']
   for (let i = 0; i < 5; i++) {
     await prisma.schedule.create({
@@ -200,14 +214,14 @@ async function main() {
     })
   }
 
-  // 9. Device Status (5)
+  // 10. Device Status (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.deviceStatus.create({
   //     data: { room_id: rooms[i].id, light: true, ac: false }
   //   })
   // }
 
-  // 10. Sensor Logs (5)
+  // 11. Sensor Logs (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.sensorLog.create({
   //     data: {
@@ -222,7 +236,7 @@ async function main() {
   //   })
   // }
 
-  // 11. Attendances (5)
+  // 12. Attendances (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.attendance.create({
   //     data: {

@@ -70,7 +70,6 @@ const buildingController = {
         where.status = statuses[0] === 'true'
       }
 
-
       const [buildings, total] = await Promise.all([
         prisma.building.findMany({
           where,
@@ -91,6 +90,27 @@ const buildingController = {
       }
 
       return success(res, 'success', buildings, 200, metadata)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  getAllBuildings: async (req, res) => {
+    try {
+      const buildings = await prisma.building.findMany({
+        where: {
+          status: true
+        },
+        select: {
+          id: true,
+          name: true
+        },
+        orderBy: {
+          name: 'asc'
+        }
+      })
+
+      return success(res, 'success', buildings)
     } catch (err) {
       return error(res, err.message, 500)
     }

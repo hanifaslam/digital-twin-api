@@ -10,7 +10,7 @@ const studyProgramRoutes = require('../modules/study-programs/study-program.rout
 const roomRoutes = require('../modules/rooms/room.routes')
 const buildingRoutes = require('../modules/buildings/building.routes')
 const deviceRoutes = require('../modules/devices/device.routes')
-const masterFloorRoutes = require('../modules/master-floors/master-floor.routes')
+const masterFloorRoutes = require('../modules/floors/floor.routes')
 
 router.use('/auth', authRoutes)
 
