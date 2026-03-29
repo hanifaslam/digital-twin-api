@@ -68,7 +68,6 @@ const deviceController = {
         where.status = statuses[0] === 'true'
       }
 
-
       const [devices, total] = await Promise.all([
         prisma.device.findMany({
           where,
@@ -77,6 +76,11 @@ const deviceController = {
             name: true,
             type: true,
             room_id: true,
+            room: {
+              select: {
+                name: true
+              }
+            },
             status: true,
             created_at: true,
             updated_at: true
@@ -90,6 +94,16 @@ const deviceController = {
         prisma.device.count({ where })
       ])
 
+      const result = devices.map((device) => ({
+        id: device.id,
+        name: device.name,
+        type: device.type,
+        room_name: device.room?.name,
+        status: device.status,
+        created_at: device.created_at,
+        updated_at: device.updated_at
+      }))
+
       const metadata = {
         per_page: perPage,
         current_page: page,
@@ -97,7 +111,7 @@ const deviceController = {
         total_page: Math.ceil(total / perPage)
       }
 
-      return success(res, 'success', devices, 200, metadata)
+      return success(res, 'success', result, 200, metadata)
     } catch (err) {
       return error(res, err.message, 500)
     }

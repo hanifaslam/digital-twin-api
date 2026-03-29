@@ -2,6 +2,24 @@ const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 
 const roomController = {
+  getAllRooms: async (req, res) => {
+    try {
+      const rooms = await prisma.room.findMany({
+        select: {
+          id: true,
+          name: true
+        },
+        orderBy: {
+          name: 'asc'
+        }
+      })
+
+      return success(res, 'success', rooms)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
   create: async (req, res) => {
     try {
       const { name, building_id, floor_id, status } = req.body || {}
