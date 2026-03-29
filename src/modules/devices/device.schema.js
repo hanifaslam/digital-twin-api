@@ -10,7 +10,7 @@ const createDeviceSchema = z.object({
   mqtt_topic: z.string().optional(),
   stream_url: z.string().optional(),
   status: statusField
-})
+}).strict()
 
 const updateDeviceSchema = z.object({
   name: z.string().min(1, 'Name cannot be empty').optional(),
@@ -19,6 +19,6 @@ const updateDeviceSchema = z.object({
   mqtt_topic: z.string().optional(),
   stream_url: z.string().optional(),
   status: statusField.optional()
-})
+}).strict()
 
 module.exports = { createDeviceSchema, updateDeviceSchema }

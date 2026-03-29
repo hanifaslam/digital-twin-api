@@ -5,6 +5,7 @@ const { validate } = require('../../common/middlewares/validate.middleware')
 const { createUserSchema, updateUserSchema, resetPasswordSchema } = require('./user.schema')
 
 router.post('/', validate(createUserSchema), userController.create)
+router.get('/all', userController.getAllUsers)
 router.get('/', userController.getAll)
 router.get('/:id', userController.getById)
 router.patch('/:id', validate(updateUserSchema), userController.update)

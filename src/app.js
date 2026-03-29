@@ -4,6 +4,8 @@ const cookieParser = require('cookie-parser')
 const cors = require('cors')
 const routes = require('./routes')
 const { error } = require('./config/response')
+const prisma = require('./config/prisma')
+const redisClient = require('./config/redis')
 
 const app = express()
 app.set('trust proxy', 1)
@@ -66,10 +68,39 @@ app.use((err, req, res, next) => {
 })
 
 const PORT = process.env.PORT || 3000
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`)
 })
 
 module.exports = app
 
-//test
+let isShuttingDown = false
+
+const shutdown = async (signal) => {
+  if (isShuttingDown) return
+  isShuttingDown = true
+
+  server.close(async () => {
+    try {
+      await prisma.$disconnect().catch(() => {})
+
+      if (prisma.pool) {
+        await prisma.pool.end().catch(() => {})
+      }
+
+      if (redisClient.isOpen) {
+        await redisClient.quit().catch(() => {})
+      }
+    } finally {
+      if (signal === 'SIGUSR2') {
+        process.kill(process.pid, 'SIGUSR2')
+      } else {
+        process.exit(0)
+      }
+    }
+  })
+}
+
+process.on('SIGINT', () => shutdown('SIGINT'))
+process.on('SIGTERM', () => shutdown('SIGTERM'))
+process.on('SIGUSR2', () => shutdown('SIGUSR2'))

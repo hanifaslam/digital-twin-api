@@ -11,11 +11,11 @@ const loginSchema = z.object({
     .min(8, 'Password must be at least 8 characters')
     .regex(passwordRegex, passwordErrorMessage),
   remember_me: z.boolean().optional()
-})
+}).strict()
 
 const forgotPasswordSchema = z.object({
   email: z.email('Invalid email format')
-})
+}).strict()
 
 const resetPasswordSchema = z
   .object({
@@ -25,6 +25,7 @@ const resetPasswordSchema = z
       .regex(passwordRegex, passwordErrorMessage),
     confirm_password: z.string().min(1, 'Confirm password is required')
   })
+  .strict()
   .refine((data) => data.password === data.confirm_password, {
     message: "Passwords don't match",
     path: ['confirm_password']
@@ -39,6 +40,7 @@ const changePasswordSchema = z
       .regex(passwordRegex, passwordErrorMessage),
     confirm_password: z.string().min(1, 'Confirm password is required')
   })
+  .strict()
   .refine((data) => data.new_password === data.confirm_password, {
     message: "Passwords don't match",
     path: ['confirm_password']

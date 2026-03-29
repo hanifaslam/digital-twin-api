@@ -1,36 +1,26 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 
-const buildingController = {
+const masterFloorController = {
   create: async (req, res) => {
     try {
-      const { name, code, status } = req.body || {}
+      const { name, status } = req.body || {}
 
       if (!name) {
         return error(res, 'Missing required fields', 400)
       }
 
-      const existingBuilding = await prisma.building.findUnique({
+      const existingMasterFloor = await prisma.masterFloor.findUnique({
         where: { name }
       })
 
-      if (existingBuilding) {
-        return error(res, 'Building name already exists', 400)
+      if (existingMasterFloor) {
+        return error(res, 'Master floor name already exists', 400)
       }
 
-      if (code) {
-        const existingCode = await prisma.building.findUnique({
-          where: { code }
-        })
-        if (existingCode) {
-          return error(res, 'Building code already exists', 400)
-        }
-      }
-
-      await prisma.building.create({
+      await prisma.masterFloor.create({
         data: {
           name,
-          code,
           status:
             status !== undefined ? status === 'true' || status === true : true
         }
@@ -44,7 +34,7 @@ const buildingController = {
 
   getAll: async (req, res) => {
     try {
-      const { q, status } = req.query || {}
+      const { q, status, building } = req.query || {}
       const statuses = [
         ...new Set(
           status
@@ -53,6 +43,10 @@ const buildingController = {
             .filter((item) => item === 'true' || item === 'false')
         )
       ]
+      const buildingIds = building
+        ?.split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
       const page = parseInt(req.query.page) || 1
       const perPage = parseInt(req.query.per_page) || 10
       const skip = (page - 1) * perPage
@@ -60,18 +54,25 @@ const buildingController = {
       let where = {}
 
       if (q) {
-        where.OR = [
-          { name: { contains: q, mode: 'insensitive' } },
-          { code: { contains: q, mode: 'insensitive' } }
-        ]
+        where.name = { contains: q, mode: 'insensitive' }
       }
 
       if (statuses?.length === 1) {
         where.status = statuses[0] === 'true'
       }
 
-      const [buildings, total] = await Promise.all([
-        prisma.building.findMany({
+      if (buildingIds?.length) {
+        where.rooms = {
+          some: {
+            building_id: {
+              in: buildingIds
+            }
+          }
+        }
+      }
+
+      const [masterFloors, total] = await Promise.all([
+        prisma.masterFloor.findMany({
           where,
           skip,
           take: perPage,
@@ -79,7 +80,7 @@ const buildingController = {
             created_at: 'desc'
           }
         }),
-        prisma.building.count({ where })
+        prisma.masterFloor.count({ where })
       ])
 
       const metadata = {
@@ -89,18 +90,15 @@ const buildingController = {
         total_page: Math.ceil(total / perPage)
       }
 
-      return success(res, 'success', buildings, 200, metadata)
+      return success(res, 'success', masterFloors, 200, metadata)
     } catch (err) {
       return error(res, err.message, 500)
     }
   },
 
-  getAllBuildings: async (req, res) => {
+  getAllFloor: async (req, res) => {
     try {
-      const buildings = await prisma.building.findMany({
-        where: {
-          status: true
-        },
+      const floors = await prisma.masterFloor.findMany({
         select: {
           id: true,
           name: true
@@ -110,7 +108,7 @@ const buildingController = {
         }
       })
 
-      return success(res, 'success', buildings)
+      return success(res, 'success', floors)
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -119,13 +117,13 @@ const buildingController = {
   getById: async (req, res) => {
     try {
       const { id } = req.params
-      const building = await prisma.building.findUnique({
+      const masterFloor = await prisma.masterFloor.findUnique({
         where: { id }
       })
 
-      if (!building) return error(res, 'Building not found', 404)
+      if (!masterFloor) return error(res, 'Master floor not found', 404)
 
-      return success(res, 'success', building)
+      return success(res, 'success', masterFloor)
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -134,36 +132,28 @@ const buildingController = {
   update: async (req, res) => {
     try {
       const { id } = req.params
-      const { name, code, status } = req.body || {}
+      const { name, status } = req.body || {}
 
-      const buildingExists = await prisma.building.findUnique({
+      const masterFloorExists = await prisma.masterFloor.findUnique({
         where: { id }
       })
-      if (!buildingExists) return error(res, 'Building not found', 404)
+      if (!masterFloorExists) return error(res, 'Master floor not found', 404)
 
       if (name) {
-        const conflict = await prisma.building.findFirst({
+        const conflict = await prisma.masterFloor.findFirst({
           where: {
             name,
             NOT: { id }
           }
         })
-        if (conflict) return error(res, 'Building name already exists', 400)
-      }
 
-      if (code) {
-        const conflict = await prisma.building.findFirst({
-          where: {
-            code,
-            NOT: { id }
-          }
-        })
-        if (conflict) return error(res, 'Building code already exists', 400)
+        if (conflict) {
+          return error(res, 'Master floor name already exists', 400)
+        }
       }
 
       let updateData = {
         name,
-        code,
         status:
           status !== undefined
             ? status === 'true' || status === true
@@ -178,7 +168,7 @@ const buildingController = {
         return error(res, 'No valid fields provided for update', 400)
       }
 
-      await prisma.building.update({
+      await prisma.masterFloor.update({
         where: { id },
         data: updateData
       })
@@ -192,17 +182,12 @@ const buildingController = {
   delete: async (req, res) => {
     try {
       const { id } = req.params
-      const buildingExists = await prisma.building.findUnique({
-        where: { id },
-        include: { _count: { select: { rooms: true } } }
+      const masterFloorExists = await prisma.masterFloor.findUnique({
+        where: { id }
       })
-      if (!buildingExists) return error(res, 'Building not found', 404)
+      if (!masterFloorExists) return error(res, 'Master floor not found', 404)
 
-      if (buildingExists._count.rooms > 0) {
-        return error(res, 'Cannot delete building with active rooms', 400)
-      }
-
-      await prisma.building.delete({ where: { id } })
+      await prisma.masterFloor.delete({ where: { id } })
 
       return success(res, 'success', null)
     } catch (err) {
@@ -213,16 +198,14 @@ const buildingController = {
   toggleStatus: async (req, res) => {
     try {
       const { id } = req.params
-      const building = await prisma.building.findUnique({
+      const masterFloor = await prisma.masterFloor.findUnique({
         where: { id }
       })
-      if (!building) return error(res, 'Building not found', 404)
+      if (!masterFloor) return error(res, 'Master floor not found', 404)
 
-      const newStatus = !building.status
-
-      await prisma.building.update({
+      await prisma.masterFloor.update({
         where: { id },
-        data: { status: newStatus }
+        data: { status: !masterFloor.status }
       })
 
       return success(res, 'success', null)
@@ -232,4 +215,4 @@ const buildingController = {
   }
 }
 
-module.exports = buildingController
+module.exports = masterFloorController

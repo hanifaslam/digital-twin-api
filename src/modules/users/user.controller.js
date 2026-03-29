@@ -66,9 +66,53 @@ const userController = {
     }
   },
 
+  getAllUsers: async (req, res) => {
+    try {
+      const { role } = req.query || {}
+      const where = {
+        status: true,
+        lecturer: null
+      }
+
+      if (role) {
+        where.role = {
+          code: role
+        }
+      }
+
+      const users = await prisma.user.findMany({
+        where,
+        select: {
+          id: true,
+          name: true,
+          email: true
+        },
+        orderBy: {
+          name: 'asc'
+        }
+      })
+
+      return success(res, 'success', users)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
   getAll: async (req, res) => {
     try {
       const { q, status, role } = req.query || {}
+      const statuses = [
+        ...new Set(
+          status
+            ?.split(',')
+            .map((item) => item.trim().toLowerCase())
+            .filter((item) => item === 'true' || item === 'false')
+        )
+      ]
+      const roleIds = role
+        ?.split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
       const page = parseInt(req.query.page) || 1
       const perPage = parseInt(req.query.per_page) || 10
       const skip = (page - 1) * perPage
@@ -83,12 +127,18 @@ const userController = {
         ]
       }
 
-      if (status !== undefined && status !== '') {
-        where.status = status === 'true' || status === true
+      if (statuses?.length === 1) {
+        where.status = statuses[0] === 'true'
       }
 
-      if (role) {
-        where.role_id = role
+      if (roleIds?.length === 1) {
+        where.role_id = roleIds[0]
+      }
+
+      if (roleIds?.length > 1) {
+        where.role_id = {
+          in: roleIds
+        }
       }
 
       const [users, total] = await Promise.all([
@@ -210,13 +260,19 @@ const userController = {
         (key) => updateData[key] === undefined && delete updateData[key]
       )
 
+      if (Object.keys(updateData).length === 0) {
+        return error(res, 'No valid fields provided for update', 400)
+      }
+
       await prisma.user.update({
         where: { id },
         data: updateData
       })
 
       // Invalidate Redis cache
-      await redisClient.del(`user:auth:${id}`).catch((err) => console.error('Redis Del Error:', err))
+      await redisClient
+        .del(`user:auth:${id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null)
     } catch (err) {
@@ -239,7 +295,9 @@ const userController = {
       })
 
       // Invalidate Redis cache
-      await redisClient.del(`user:auth:${id}`).catch((err) => console.error('Redis Del Error:', err))
+      await redisClient
+        .del(`user:auth:${id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success')
     } catch (err) {
@@ -271,7 +329,9 @@ const userController = {
       })
 
       // Invalidate Redis cache
-      await redisClient.del(`user:auth:${id}`).catch((err) => console.error('Redis Del Error:', err))
+      await redisClient
+        .del(`user:auth:${id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null)
     } catch (err) {

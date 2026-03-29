@@ -66,7 +66,8 @@ model Room {
   name          String
   building_id   String
   building      Building       @relation(fields: [building_id], references: [id])
-  floor         Int            @default(1)
+  floor_id      String
+  floor         MasterFloor    @relation(fields: [floor_id], references: [id])
   status        Boolean        @default(true)
   schedules     Schedule[]
   attendances   Attendance[]
@@ -77,7 +78,7 @@ model Room {
   updated_at    DateTime       @updatedAt
 
   @@index([building_id])
-  @@index([floor])
+  @@index([floor_id])
 }
 
 model Building {
@@ -90,29 +91,45 @@ model Building {
   updated_at  DateTime @updatedAt
 }
 
+model MasterFloor {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  status      Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+  rooms       Room[]
+}
+
 model Lecturer {
-  id               String       @id @default(cuid())
-  nip              String       @unique
-  study_program_id String
-  study_program    StudyProgram @relation(fields: [study_program_id], references: [id])
-  user_id          String       @unique
-  user             User         @relation(fields: [user_id], references: [id])
+  id               String                @id @default(cuid())
+  nip              String                @unique
+  user_id          String                @unique
+  user             User                  @relation(fields: [user_id], references: [id])
+  study_programs   LecturerStudyProgram[]
   schedules        Schedule[]
   attendances      Attendance[]
-  created_at       DateTime     @default(now())
-  updated_at       DateTime     @updatedAt
-
-  @@index([study_program_id])
+  created_at       DateTime              @default(now())
+  updated_at       DateTime              @updatedAt
 }
 
 model StudyProgram {
-  id          String     @id @default(cuid())
-  name        String     @unique
-  code        String     @unique
-  status      Boolean    @default(true)
-  created_at  DateTime   @default(now())
-  updated_at  DateTime   @updatedAt
-  lecturers   Lecturer[]
+  id          String                @id @default(cuid())
+  name        String                @unique
+  code        String                @unique
+  status      Boolean               @default(true)
+  created_at  DateTime              @default(now())
+  updated_at  DateTime              @updatedAt
+  lecturers   LecturerStudyProgram[]
+}
+
+model LecturerStudyProgram {
+  lecturer_id      String
+  study_program_id String
+  lecturer         Lecturer     @relation(fields: [lecturer_id], references: [id], onDelete: Cascade)
+  study_program    StudyProgram @relation(fields: [study_program_id], references: [id], onDelete: Cascade)
+
+  @@id([lecturer_id, study_program_id])
+  @@index([study_program_id])
 }
 
 model Schedule {
