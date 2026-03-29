@@ -63,6 +63,10 @@ const roomController = {
             .filter((item) => item === 'true' || item === 'false')
         )
       ]
+      const buildingIds = building_id
+        ?.split(',')
+        .map((item) => item.trim())
+        .filter(Boolean)
       const page = parseInt(req.query.page) || 1
       const perPage = parseInt(req.query.per_page) || 10
       const skip = (page - 1) * perPage
@@ -81,8 +85,14 @@ const roomController = {
       }
 
 
-      if (building_id) {
-        where.building_id = building_id
+      if (buildingIds?.length === 1) {
+        where.building_id = buildingIds[0]
+      }
+
+      if (buildingIds?.length > 1) {
+        where.building_id = {
+          in: buildingIds
+        }
       }
 
       if (floor_id) {
@@ -219,6 +229,10 @@ const roomController = {
       Object.keys(updateData).forEach(
         (key) => updateData[key] === undefined && delete updateData[key]
       )
+
+      if (Object.keys(updateData).length === 0) {
+        return error(res, 'No valid fields provided for update', 400)
+      }
 
       await prisma.room.update({
         where: { id },

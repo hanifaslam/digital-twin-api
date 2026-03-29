@@ -215,6 +215,14 @@ const roleController = {
         })
       }
 
+      const hasRoleFields =
+        name !== undefined || code !== undefined || status !== undefined
+      const hasAccessUpdate = access !== undefined
+
+      if (!hasRoleFields && !hasAccessUpdate) {
+        return error(res, 'No valid fields provided for update', 400)
+      }
+
       await prisma.$transaction(async (tx) => {
         await tx.role.update({
           where: { id },

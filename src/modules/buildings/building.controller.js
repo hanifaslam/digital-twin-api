@@ -174,6 +174,10 @@ const buildingController = {
         (key) => updateData[key] === undefined && delete updateData[key]
       )
 
+      if (Object.keys(updateData).length === 0) {
+        return error(res, 'No valid fields provided for update', 400)
+      }
+
       await prisma.building.update({
         where: { id },
         data: updateData

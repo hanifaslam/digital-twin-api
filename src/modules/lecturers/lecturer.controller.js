@@ -281,6 +281,13 @@ const lecturerController = {
         (key) => updateData[key] === undefined && delete updateData[key]
       )
 
+      if (
+        Object.keys(updateData).length === 0 &&
+        uniqueStudyProgramIds === undefined
+      ) {
+        return error(res, 'No valid fields provided for update', 400)
+      }
+
       await prisma.$transaction(async (tx) => {
         await tx.lecturer.update({
           where: { id },
