@@ -1,5 +1,6 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const { buildPagination } = require('../../utils/pagination')
 
 const roomController = {
   getAllRooms: async (req, res) => {
@@ -60,7 +61,8 @@ const roomController = {
           name,
           building_id,
           floor_id,
-          status: status !== undefined ? (status === 'true' || status === true) : true
+          status:
+            status !== undefined ? status === 'true' || status === true : true
         }
       })
 
@@ -102,7 +104,6 @@ const roomController = {
         where.status = statuses[0] === 'true'
       }
 
-
       if (buildingIds?.length === 1) {
         where.building_id = buildingIds[0]
       }
@@ -137,15 +138,11 @@ const roomController = {
         prisma.room.count({ where })
       ])
 
-      const metadata = {
-        per_page: perPage,
-        current_page: page,
-        total_row: total,
-        total_page: Math.ceil(total / perPage)
-      }
+      const metadata = buildPagination(page, perPage, total)
 
       const formattedRooms = rooms.map((room) => {
-        const { building, floor, status, created_at, updated_at, ...roomData } = room
+        const { building, floor, status, created_at, updated_at, ...roomData } =
+          room
         return {
           ...roomData,
           building_name: building?.name,
@@ -175,7 +172,8 @@ const roomController = {
 
       if (!room) return error(res, 'Room not found', 404)
 
-      const { building, floor, status, created_at, updated_at, ...roomData } = room
+      const { building, floor, status, created_at, updated_at, ...roomData } =
+        room
       const formattedRoom = {
         ...roomData,
         building_name: building?.name,
@@ -241,7 +239,10 @@ const roomController = {
         name,
         building_id,
         floor_id,
-        status: status !== undefined ? (status === 'true' || status === true) : undefined
+        status:
+          status !== undefined
+            ? status === 'true' || status === true
+            : undefined
       }
 
       Object.keys(updateData).forEach(

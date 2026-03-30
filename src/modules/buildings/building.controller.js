@@ -1,5 +1,6 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const { buildPagination } = require('../../utils/pagination')
 
 const buildingController = {
   create: async (req, res) => {
@@ -82,12 +83,7 @@ const buildingController = {
         prisma.building.count({ where })
       ])
 
-      const metadata = {
-        per_page: perPage,
-        current_page: page,
-        total_row: total,
-        total_page: Math.ceil(total / perPage)
-      }
+      const metadata = buildPagination(page, perPage, total)
 
       return success(res, 'success', buildings, 200, metadata)
     } catch (err) {

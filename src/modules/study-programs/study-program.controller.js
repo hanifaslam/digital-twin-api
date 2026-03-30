@@ -1,5 +1,6 @@
 const prisma = require('../../config/prisma')
 const { success, error, responseHandler } = require('../../config/response')
+const { buildPagination } = require('../../utils/pagination')
 
 const studyProgramController = {
   create: async (req, res) => {
@@ -88,7 +89,6 @@ const studyProgramController = {
         where.status = statuses[0] === 'true'
       }
 
-
       const [studyPrograms, total] = await Promise.all([
         prisma.studyProgram.findMany({
           where,
@@ -101,12 +101,7 @@ const studyProgramController = {
         prisma.studyProgram.count({ where })
       ])
 
-      const metadata = {
-        per_page: perPage,
-        current_page: page,
-        total_row: total,
-        total_page: Math.ceil(total / perPage)
-      }
+      const metadata = buildPagination(page, perPage, total)
 
       return success(res, 'success', studyPrograms, 200, metadata)
     } catch (err) {

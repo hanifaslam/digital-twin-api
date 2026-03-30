@@ -120,6 +120,24 @@ model StudyProgram {
   created_at  DateTime              @default(now())
   updated_at  DateTime              @updatedAt
   lecturers   LecturerStudyProgram[]
+  courses     Course[]
+}
+
+model Course {
+  id               String       @id @default(cuid())
+  code             String
+  name             String
+  semester         CourseSemester
+  study_program_id String
+  study_program    StudyProgram @relation(fields: [study_program_id], references: [id])
+  status           Boolean      @default(true)
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  @@unique([study_program_id, code])
+  @@unique([study_program_id, name])
+  @@index([study_program_id])
+  @@index([semester])
 }
 
 model LecturerStudyProgram {
@@ -204,6 +222,17 @@ enum DeviceType {
   AC
   LAMP
   CCTV
+}
+
+enum CourseSemester {
+  SEMESTER_1
+  SEMESTER_2
+  SEMESTER_3
+  SEMESTER_4
+  SEMESTER_5
+  SEMESTER_6
+  SEMESTER_7
+  SEMESTER_8
 }
 
 

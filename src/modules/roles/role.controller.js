@@ -1,5 +1,6 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const { buildPagination } = require('../../utils/pagination')
 
 const roleController = {
   getAllRoles: async (req, res) => {
@@ -92,7 +93,6 @@ const roleController = {
         where.status = statuses[0] === 'true'
       }
 
-
       const [roles, total] = await Promise.all([
         prisma.role.findMany({
           where,
@@ -112,12 +112,7 @@ const roleController = {
         is_active: role.status
       }))
 
-      const metadata = {
-        per_page: limit,
-        current_page: page,
-        total_row: total,
-        total_page: Math.ceil(total / limit)
-      }
+      const metadata = buildPagination(page, limit, total)
 
       return success(res, 'success', formattedRoles, 200, metadata)
     } catch (err) {

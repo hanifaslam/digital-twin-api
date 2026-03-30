@@ -2,6 +2,7 @@ const prisma = require('../../config/prisma')
 const bcrypt = require('bcryptjs')
 const { success, error } = require('../../config/response')
 const redisClient = require('../../config/redis')
+const { buildPagination } = require('../../utils/pagination')
 
 const userController = {
   create: async (req, res) => {
@@ -167,12 +168,7 @@ const userController = {
         updated_at: user.updated_at
       }))
 
-      const metadata = {
-        per_page: perPage,
-        current_page: page,
-        total_row: total,
-        total_page: Math.ceil(total / perPage)
-      }
+      const metadata = buildPagination(page, perPage, total)
 
       return success(res, 'success', formattedData, 200, metadata)
     } catch (err) {
