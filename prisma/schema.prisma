@@ -20,6 +20,7 @@ model User {
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
   lecturer   Lecturer?
+  helper     Helper?
 
   @@index([role_id])
 }
@@ -87,6 +88,7 @@ model Building {
   code        String?  @unique
   status      Boolean  @default(true)
   rooms       Room[]
+  helpers     HelperBuilding[]
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 }
@@ -110,6 +112,18 @@ model Lecturer {
   attendances      Attendance[]
   created_at       DateTime              @default(now())
   updated_at       DateTime              @updatedAt
+}
+
+model Helper {
+  id           String       @id @default(cuid())
+  nip          String       @unique
+  phone_number String?
+  user_id      String       @unique
+  user         User         @relation(fields: [user_id], references: [id])
+  status       Boolean      @default(true)
+  buildings    HelperBuilding[]
+  created_at   DateTime     @default(now())
+  updated_at   DateTime     @updatedAt
 }
 
 model StudyProgram {
@@ -148,6 +162,16 @@ model LecturerStudyProgram {
 
   @@id([lecturer_id, study_program_id])
   @@index([study_program_id])
+}
+
+model HelperBuilding {
+  helper_id String
+  building_id String
+  helper    Helper   @relation(fields: [helper_id], references: [id], onDelete: Cascade)
+  building  Building @relation(fields: [building_id], references: [id], onDelete: Cascade)
+
+  @@id([helper_id, building_id])
+  @@index([building_id])
 }
 
 model Schedule {

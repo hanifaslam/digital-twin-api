@@ -12,6 +12,7 @@ const buildingRoutes = require('../modules/buildings/building.routes')
 const deviceRoutes = require('../modules/devices/device.routes')
 const masterFloorRoutes = require('../modules/floors/floor.routes')
 const courseRoutes = require('../modules/courses/course.routes')
+const helperRoutes = require('../modules/helpers/helper.routes')
 
 router.use('/auth', authRoutes)
 
@@ -25,5 +26,6 @@ router.use('/buildings', authMiddleware, buildingRoutes)
 router.use('/devices', authMiddleware, deviceRoutes)
 router.use('/floors', authMiddleware, masterFloorRoutes)
 router.use('/courses', authMiddleware, courseRoutes)
+router.use('/helpers', authMiddleware, helperRoutes)
 
 module.exports = router
