@@ -2,6 +2,16 @@ const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
 
+const withDeactivationFlag = (role) => {
+  const userCount = role?._count?.users || 0
+  const { _count, ...roleData } = role
+
+  return {
+    ...roleData,
+    can_deactivate: userCount === 0
+  }
+}
+
 const roleController = {
   getAllRoles: async (req, res) => {
     try {
@@ -98,12 +108,20 @@ const roleController = {
           where,
           skip,
           take: limit,
+          include: {
+            _count: {
+              select: {
+                users: true
+              }
+            }
+          },
           orderBy: { created_at: 'desc' }
         }),
         prisma.role.count({ where })
       ])
 
       const formattedRoles = roles.map((role) => ({
+        ...withDeactivationFlag(role),
         id: role.id,
         code: role.code,
         name: role.name,
@@ -127,7 +145,12 @@ const roleController = {
       const role = await prisma.role.findUnique({
         where: { id },
         include: {
-          permissions: true
+          permissions: true,
+          _count: {
+            select: {
+              users: true
+            }
+          }
         }
       })
 
@@ -175,6 +198,7 @@ const roleController = {
         name: role.name,
         status: role.status,
         is_active: role.status,
+        can_deactivate: role._count.users === 0,
         access: access
       }
 
@@ -189,9 +213,26 @@ const roleController = {
       const { id } = req.params
       const { name, status, code, access } = req.body || {}
 
-      const roleExists = await prisma.role.findUnique({ where: { id } })
+      const roleExists = await prisma.role.findUnique({
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              users: true
+            }
+          }
+        }
+      })
       if (!roleExists) {
         return error(res, 'Role not found', 404)
+      }
+
+      if (status === false && roleExists._count.users > 0) {
+        return error(
+          res,
+          'Cannot deactivate role because it is still assigned to users',
+          400
+        )
       }
 
       const checkedIds = []
@@ -257,12 +298,27 @@ const roleController = {
     try {
       const { id } = req.params
 
-      const role = await prisma.role.findUnique({ where: { id } })
-      if (!role) {
-        return responseHandler(res, false, 'Role not found', null, 404)
-      }
+      const role = await prisma.role.findUnique({
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              users: true
+            }
+          }
+        }
+      })
+      if (!role) return error(res, 'Role not found', 404)
 
       const newStatus = !role.status
+
+      if (!newStatus && role._count.users > 0) {
+        return error(
+          res,
+          'Cannot deactivate role because it is still assigned to users',
+          400
+        )
+      }
 
       await prisma.role.update({
         where: { id },

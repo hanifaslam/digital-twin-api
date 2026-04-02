@@ -2,6 +2,17 @@ const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
 
+const withDeactivationFlag = (building) => {
+  const roomCount = building?._count?.rooms || 0
+  const helperCount = building?._count?.helpers || 0
+  const { _count, ...buildingData } = building
+
+  return {
+    ...buildingData,
+    can_deactivate: roomCount === 0 && helperCount === 0
+  }
+}
+
 const buildingController = {
   create: async (req, res) => {
     try {
@@ -76,6 +87,14 @@ const buildingController = {
           where,
           skip,
           take: perPage,
+          include: {
+            _count: {
+              select: {
+                rooms: true,
+                helpers: true
+              }
+            }
+          },
           orderBy: {
             created_at: 'desc'
           }
@@ -85,7 +104,13 @@ const buildingController = {
 
       const metadata = buildPagination(page, perPage, total)
 
-      return success(res, 'success', buildings, 200, metadata)
+      return success(
+        res,
+        'success',
+        buildings.map(withDeactivationFlag),
+        200,
+        metadata
+      )
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -116,12 +141,20 @@ const buildingController = {
     try {
       const { id } = req.params
       const building = await prisma.building.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              rooms: true,
+              helpers: true
+            }
+          }
+        }
       })
 
       if (!building) return error(res, 'Building not found', 404)
 
-      return success(res, 'success', building)
+      return success(res, 'success', withDeactivationFlag(building))
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -133,9 +166,29 @@ const buildingController = {
       const { name, code, status } = req.body || {}
 
       const buildingExists = await prisma.building.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              rooms: true,
+              helpers: true
+            }
+          }
+        }
       })
       if (!buildingExists) return error(res, 'Building not found', 404)
+
+      if (
+        status !== undefined &&
+        (status === false || status === 'false') &&
+        (buildingExists._count.rooms > 0 || buildingExists._count.helpers > 0)
+      ) {
+        return error(
+          res,
+          'Cannot deactivate building because it is still used by related data',
+          400
+        )
+      }
 
       if (name) {
         const conflict = await prisma.building.findFirst({
@@ -210,11 +263,30 @@ const buildingController = {
     try {
       const { id } = req.params
       const building = await prisma.building.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              rooms: true,
+              helpers: true
+            }
+          }
+        }
       })
       if (!building) return error(res, 'Building not found', 404)
 
       const newStatus = !building.status
+
+      if (
+        !newStatus &&
+        (building._count.rooms > 0 || building._count.helpers > 0)
+      ) {
+        return error(
+          res,
+          'Cannot deactivate building because it is still used by related data',
+          400
+        )
+      }
 
       await prisma.building.update({
         where: { id },

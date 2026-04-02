@@ -2,6 +2,16 @@ const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
 
+const withDeactivationFlag = (masterFloor) => {
+  const roomCount = masterFloor?._count?.rooms || 0
+  const { _count, ...masterFloorData } = masterFloor
+
+  return {
+    ...masterFloorData,
+    can_deactivate: roomCount === 0
+  }
+}
+
 const masterFloorController = {
   create: async (req, res) => {
     try {
@@ -77,6 +87,13 @@ const masterFloorController = {
           where,
           skip,
           take: perPage,
+          include: {
+            _count: {
+              select: {
+                rooms: true
+              }
+            }
+          },
           orderBy: {
             created_at: 'desc'
           }
@@ -86,7 +103,13 @@ const masterFloorController = {
 
       const metadata = buildPagination(page, perPage, total)
 
-      return success(res, 'success', masterFloors, 200, metadata)
+      return success(
+        res,
+        'success',
+        masterFloors.map(withDeactivationFlag),
+        200,
+        metadata
+      )
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -114,12 +137,19 @@ const masterFloorController = {
     try {
       const { id } = req.params
       const masterFloor = await prisma.masterFloor.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              rooms: true
+            }
+          }
+        }
       })
 
       if (!masterFloor) return error(res, 'Master floor not found', 404)
 
-      return success(res, 'success', masterFloor)
+      return success(res, 'success', withDeactivationFlag(masterFloor))
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -131,9 +161,28 @@ const masterFloorController = {
       const { name, status } = req.body || {}
 
       const masterFloorExists = await prisma.masterFloor.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              rooms: true
+            }
+          }
+        }
       })
       if (!masterFloorExists) return error(res, 'Master floor not found', 404)
+
+      if (
+        status !== undefined &&
+        (status === false || status === 'false') &&
+        masterFloorExists._count.rooms > 0
+      ) {
+        return error(
+          res,
+          'Cannot deactivate master floor because it is still used by related rooms',
+          400
+        )
+      }
 
       if (name) {
         const conflict = await prisma.masterFloor.findFirst({
@@ -195,13 +244,30 @@ const masterFloorController = {
     try {
       const { id } = req.params
       const masterFloor = await prisma.masterFloor.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              rooms: true
+            }
+          }
+        }
       })
       if (!masterFloor) return error(res, 'Master floor not found', 404)
 
+      const newStatus = !masterFloor.status
+
+      if (!newStatus && masterFloor._count.rooms > 0) {
+        return error(
+          res,
+          'Cannot deactivate master floor because it is still used by related rooms',
+          400
+        )
+      }
+
       await prisma.masterFloor.update({
         where: { id },
-        data: { status: !masterFloor.status }
+        data: { status: newStatus }
       })
 
       return success(res, 'success', null)

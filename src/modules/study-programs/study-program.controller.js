@@ -2,6 +2,16 @@ const prisma = require('../../config/prisma')
 const { success, error, responseHandler } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
 
+const withDeactivationFlag = (studyProgram) => {
+  const { _count, ...studyProgramData } = studyProgram
+  const courseCount = studyProgram?._count?.courses || 0
+
+  return {
+    ...studyProgramData,
+    can_deactivate: courseCount === 0
+  }
+}
+
 const studyProgramController = {
   create: async (req, res) => {
     try {
@@ -94,6 +104,13 @@ const studyProgramController = {
           where,
           skip,
           take: perPage,
+          include: {
+            _count: {
+              select: {
+                courses: true
+              }
+            }
+          },
           orderBy: {
             created_at: 'desc'
           }
@@ -103,7 +120,13 @@ const studyProgramController = {
 
       const metadata = buildPagination(page, perPage, total)
 
-      return success(res, 'success', studyPrograms, 200, metadata)
+      return success(
+        res,
+        'success',
+        studyPrograms.map(withDeactivationFlag),
+        200,
+        metadata
+      )
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -113,12 +136,19 @@ const studyProgramController = {
     try {
       const { id } = req.params
       const studyProgram = await prisma.studyProgram.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              courses: true
+            }
+          }
+        }
       })
 
       if (!studyProgram) return error(res, 'Study program not found', 404)
 
-      return success(res, 'success', studyProgram)
+      return success(res, 'success', withDeactivationFlag(studyProgram))
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -130,9 +160,24 @@ const studyProgramController = {
       const { name, code, status } = req.body || {}
 
       const programExists = await prisma.studyProgram.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              courses: true
+            }
+          }
+        }
       })
       if (!programExists) return error(res, 'Study program not found', 404)
+
+      if (status === false && programExists._count.courses > 0) {
+        return error(
+          res,
+          `Cannot deactivate study program because it is still used by ${programExists._count.courses} course(s)`,
+          400
+        )
+      }
 
       if (name || code) {
         const conflict = await prisma.studyProgram.findFirst({
@@ -178,14 +223,37 @@ const studyProgramController = {
     try {
       const { id } = req.params
       const programExists = await prisma.studyProgram.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              courses: true
+            }
+          }
+        }
       })
       if (!programExists) return error(res, 'Study program not found', 404)
+
+      if (programExists._count.courses > 0) {
+        return error(
+          res,
+          `Cannot delete study program because it is still used by ${programExists._count.courses} course(s)`,
+          400
+        )
+      }
 
       await prisma.studyProgram.delete({ where: { id } })
 
       return success(res, 'success', null)
     } catch (err) {
+      if (err.code === 'P2003') {
+        return error(
+          res,
+          'Cannot delete study program because it is still referenced by related data',
+          400
+        )
+      }
+
       return error(res, err.message, 500)
     }
   },
@@ -194,11 +262,26 @@ const studyProgramController = {
     try {
       const { id } = req.params
       const studyProgram = await prisma.studyProgram.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              courses: true
+            }
+          }
+        }
       })
       if (!studyProgram) return error(res, 'Study program not found', 404)
 
       const newStatus = !studyProgram.status
+
+      if (!newStatus && studyProgram._count.courses > 0) {
+        return error(
+          res,
+          `Cannot deactivate study program because it is still used by ${studyProgram._count.courses} course(s)`,
+          400
+        )
+      }
 
       await prisma.studyProgram.update({
         where: { id },
