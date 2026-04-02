@@ -102,6 +102,18 @@ model MasterFloor {
   rooms       Room[]
 }
 
+model MasterTimeSlot {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  start_time  String
+  end_time    String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([start_time, end_time])
+  @@index([start_time])
+}
+
 model Lecturer {
   id               String                @id @default(cuid())
   nip              String                @unique
