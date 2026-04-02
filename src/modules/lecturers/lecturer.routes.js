@@ -2,7 +2,10 @@ const express = require('express')
 const router = express.Router()
 const lecturerController = require('./lecturer.controller')
 const { validate } = require('../../common/middlewares/validate.middleware')
-const { createLecturerSchema, updateLecturerSchema } = require('./lecturer.schema')
+const {
+  createLecturerSchema,
+  updateLecturerSchema
+} = require('./lecturer.schema')
 
 router.post('/', validate(createLecturerSchema), lecturerController.create)
 router.get('/', lecturerController.getAll)

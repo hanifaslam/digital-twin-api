@@ -4,7 +4,11 @@ const { error } = require('../../config/response')
 const redisClient = require('../../config/redis')
 
 const getRoleIdentity = (role = {}) =>
-  (role.code || role.name || '').toString().trim().toUpperCase().replace(/\s+/g, '_')
+  (role.code || role.name || '')
+    .toString()
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_')
 
 const authMiddleware = async (req, res, next) => {
   try {
@@ -77,7 +81,11 @@ const authMiddleware = async (req, res, next) => {
 
 const checkPermission = (permissionName) => {
   return (req, res, next) => {
-    if (getRoleIdentity(req.user.role) === 'SA' || getRoleIdentity(req.user.role) === 'SUPER_ADMIN') return next()
+    if (
+      getRoleIdentity(req.user.role) === 'SA' ||
+      getRoleIdentity(req.user.role) === 'SUPER_ADMIN'
+    )
+      return next()
 
     if (!req.user.permissions.includes(permissionName)) {
       return error(res, "You don't have permission to access this module", 403)
@@ -91,9 +99,7 @@ const checkRoomAccess = async (req, res, next) => {
   const user = req.user
   const roleIdentity = getRoleIdentity(user.role)
 
-  if (
-    ['SA', 'SUPER_ADMIN', 'HLP', 'HELPER'].includes(roleIdentity)
-  ) {
+  if (['SA', 'SUPER_ADMIN', 'HLP', 'HELPER'].includes(roleIdentity)) {
     return next()
   }
 
