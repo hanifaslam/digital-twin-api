@@ -49,6 +49,7 @@ async function main() {
     { name: 'ROOM', module_code: 'master' },
     { name: 'STUDY_PROGRAM', module_code: 'master' },
     { name: 'LECTURER', module_code: 'master' },
+    { name: 'HELPER', module_code: 'master' },
     { name: 'DEVICE', module_code: 'master' }
   ]
   const perms = {}
@@ -58,11 +59,12 @@ async function main() {
     })
   }
 
-  // 3. Roles (3)
+  // 3. Roles
   const rolesData = [
     { name: 'Super Admin', code: 'SA' },
     { name: 'Dosen', code: 'DSN' },
-    { name: 'Staff', code: 'STF' }
+    { name: 'Staff', code: 'STF' },
+    { name: 'Helper', code: 'HLP' }
   ]
   const allPerms = await prisma.permission.findMany()
   const roles = {}
@@ -76,6 +78,8 @@ async function main() {
     let rolePerms = []
     if (r.code === 'SA') {
       rolePerms = allPerms
+    } else if (r.code === 'HLP') {
+      rolePerms = allPerms.filter((p) => ['DASHBOARD', 'HELPER'].includes(p.name))
     } else {
       rolePerms = allPerms.filter((p) => p.name === 'DASHBOARD')
     }

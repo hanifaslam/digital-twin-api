@@ -1,5 +1,6 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const redisClient = require('../../config/redis')
 const { buildPagination } = require('../../utils/pagination')
 
 const withDeactivationFlag = (role) => {
@@ -10,6 +11,25 @@ const withDeactivationFlag = (role) => {
     ...roleData,
     can_deactivate: userCount === 0
   }
+}
+
+const invalidateRoleUserCaches = async (roleId) => {
+  const users = await prisma.user.findMany({
+    where: { role_id: roleId },
+    select: { id: true }
+  })
+
+  if (users.length === 0) {
+    return
+  }
+
+  await Promise.all(
+    users.map((user) =>
+      redisClient
+        .del(`user:auth:${user.id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
+    )
+  )
 }
 
 const roleController = {
@@ -269,24 +289,28 @@ const roleController = {
           }
         })
 
-        await tx.rolePermission.deleteMany({
-          where: { role_id: id }
-        })
-
-        const validPermissions = await tx.permission.findMany({
-          where: { id: { in: checkedIds } },
-          select: { id: true }
-        })
-
-        if (validPermissions.length > 0) {
-          await tx.rolePermission.createMany({
-            data: validPermissions.map((p) => ({
-              role_id: id,
-              permission_id: p.id
-            }))
+        if (hasAccessUpdate) {
+          await tx.rolePermission.deleteMany({
+            where: { role_id: id }
           })
+
+          const validPermissions = await tx.permission.findMany({
+            where: { id: { in: checkedIds } },
+            select: { id: true }
+          })
+
+          if (validPermissions.length > 0) {
+            await tx.rolePermission.createMany({
+              data: validPermissions.map((p) => ({
+                role_id: id,
+                permission_id: p.id
+              }))
+            })
+          }
         }
       })
+
+      await invalidateRoleUserCaches(id)
 
       return success(res, 'success', null)
     } catch (err) {
@@ -324,6 +348,8 @@ const roleController = {
         where: { id },
         data: { status: newStatus }
       })
+
+      await invalidateRoleUserCaches(id)
 
       return success(res, 'success', null)
     } catch (err) {
