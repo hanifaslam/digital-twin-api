@@ -116,7 +116,6 @@ model Lecturer {
 
 model Helper {
   id           String       @id @default(cuid())
-  nip          String       @unique
   phone_number String?
   user_id      String       @unique
   user         User         @relation(fields: [user_id], references: [id])

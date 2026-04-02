@@ -38,21 +38,16 @@ const formatBuildingsForShow = (buildings = []) =>
 const helperController = {
   create: async (req, res) => {
     try {
-      const { nip, phone_number, user_id, building_ids, status } =
-        req.body || {}
+      const { phone_number, user_id, building_ids, status } = req.body || {}
       const uniqueBuildingIds = normalizeBuildingIds(building_ids)
 
       const existingHelper = await prisma.helper.findFirst({
         where: {
-          OR: [{ nip }, { user_id }]
+          user_id
         }
       })
 
       if (existingHelper) {
-        if (existingHelper.nip === nip) {
-          return error(res, 'NIP already registered', 400)
-        }
-
         if (existingHelper.user_id === user_id) {
           return error(
             res,
@@ -86,7 +81,6 @@ const helperController = {
 
       await prisma.helper.create({
         data: {
-          nip,
           phone_number: phone_number || null,
           user_id,
           status: status !== undefined ? status : true,
@@ -170,7 +164,6 @@ const helperController = {
 
       if (q) {
         where.OR = [
-          { nip: { contains: q, mode: 'insensitive' } },
           { phone_number: { contains: q, mode: 'insensitive' } },
           { user: { name: { contains: q, mode: 'insensitive' } } },
           { user: { email: { contains: q, mode: 'insensitive' } } }
@@ -207,7 +200,6 @@ const helperController = {
       const formattedData = helpers.map((helper) => ({
         id: helper.id,
         name: helper.user?.name || null,
-        nip: helper.nip,
         email: helper.user?.email || null,
         phone_number: helper.phone_number,
         user_id: helper.user_id,
@@ -244,7 +236,6 @@ const helperController = {
       return success(res, 'success', {
         id: helper.id,
         name: helper.user?.name || null,
-        nip: helper.nip,
         email: helper.user?.email || null,
         phone_number: helper.phone_number,
         user_id: helper.user_id,
@@ -261,8 +252,7 @@ const helperController = {
   update: async (req, res) => {
     try {
       const { id } = req.params
-      const { nip, phone_number, user_id, building_ids, status } =
-        req.body || {}
+      const { phone_number, user_id, building_ids, status } = req.body || {}
       const uniqueBuildingIds = building_ids
         ? normalizeBuildingIds(building_ids)
         : undefined
@@ -275,21 +265,15 @@ const helperController = {
         return error(res, 'Helper not found', 404)
       }
 
-      if (nip || user_id) {
+      if (user_id) {
         const conflict = await prisma.helper.findFirst({
           where: {
-            OR: [nip ? { nip } : null, user_id ? { user_id } : null].filter(
-              Boolean
-            ),
+            user_id,
             NOT: { id }
           }
         })
 
         if (conflict) {
-          if (nip && conflict.nip === nip) {
-            return error(res, 'NIP already registered', 400)
-          }
-
           if (user_id && conflict.user_id === user_id) {
             return error(
               res,
@@ -327,7 +311,6 @@ const helperController = {
       }
 
       const updateData = {
-        nip,
         phone_number: phone_number === '' ? null : phone_number,
         user_id,
         status
