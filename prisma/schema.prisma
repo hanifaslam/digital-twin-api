@@ -115,11 +115,16 @@ model TimeSlot {
 }
 
 model Class {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  status      Boolean  @default(true)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id               String       @id @default(cuid())
+  name             String
+  study_program_id String
+  study_program    StudyProgram @relation(fields: [study_program_id], references: [id])
+  status           Boolean      @default(true)
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  @@unique([study_program_id, name])
+  @@index([study_program_id])
 }
 
 model Lecturer {
@@ -154,6 +159,7 @@ model StudyProgram {
   updated_at  DateTime              @updatedAt
   lecturers   LecturerStudyProgram[]
   courses     Course[]
+  classes     Class[]
 }
 
 model Course {

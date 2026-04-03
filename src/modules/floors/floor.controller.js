@@ -21,7 +21,7 @@ const masterFloorController = {
         return error(res, 'Missing required fields', 400)
       }
 
-      const existingMasterFloor = await prisma.masterFloor.findUnique({
+      const existingMasterFloor = await prisma.floor.findUnique({
         where: { name }
       })
 
@@ -29,7 +29,7 @@ const masterFloorController = {
         return error(res, 'Master floor name already exists', 400)
       }
 
-      await prisma.masterFloor.create({
+      await prisma.floor.create({
         data: {
           name,
           status:
@@ -83,7 +83,7 @@ const masterFloorController = {
       }
 
       const [masterFloors, total] = await Promise.all([
-        prisma.masterFloor.findMany({
+        prisma.floor.findMany({
           where,
           skip,
           take: perPage,
@@ -98,7 +98,7 @@ const masterFloorController = {
             created_at: 'desc'
           }
         }),
-        prisma.masterFloor.count({ where })
+        prisma.floor.count({ where })
       ])
 
       const metadata = buildPagination(page, perPage, total)
@@ -117,7 +117,7 @@ const masterFloorController = {
 
   getAllFloor: async (req, res) => {
     try {
-      const floors = await prisma.masterFloor.findMany({
+      const floors = await prisma.floor.findMany({
         select: {
           id: true,
           name: true
@@ -136,7 +136,7 @@ const masterFloorController = {
   getById: async (req, res) => {
     try {
       const { id } = req.params
-      const masterFloor = await prisma.masterFloor.findUnique({
+      const masterFloor = await prisma.floor.findUnique({
         where: { id },
         include: {
           _count: {
@@ -160,7 +160,7 @@ const masterFloorController = {
       const { id } = req.params
       const { name, status } = req.body || {}
 
-      const masterFloorExists = await prisma.masterFloor.findUnique({
+      const masterFloorExists = await prisma.floor.findUnique({
         where: { id },
         include: {
           _count: {
@@ -185,7 +185,7 @@ const masterFloorController = {
       }
 
       if (name) {
-        const conflict = await prisma.masterFloor.findFirst({
+        const conflict = await prisma.floor.findFirst({
           where: {
             name,
             NOT: { id }
@@ -213,7 +213,7 @@ const masterFloorController = {
         return error(res, 'No valid fields provided for update', 400)
       }
 
-      await prisma.masterFloor.update({
+      await prisma.floor.update({
         where: { id },
         data: updateData
       })
@@ -227,12 +227,12 @@ const masterFloorController = {
   delete: async (req, res) => {
     try {
       const { id } = req.params
-      const masterFloorExists = await prisma.masterFloor.findUnique({
+      const masterFloorExists = await prisma.floor.findUnique({
         where: { id }
       })
       if (!masterFloorExists) return error(res, 'Master floor not found', 404)
 
-      await prisma.masterFloor.delete({ where: { id } })
+      await prisma.floor.delete({ where: { id } })
 
       return success(res, 'success', null)
     } catch (err) {
@@ -243,7 +243,7 @@ const masterFloorController = {
   toggleStatus: async (req, res) => {
     try {
       const { id } = req.params
-      const masterFloor = await prisma.masterFloor.findUnique({
+      const masterFloor = await prisma.floor.findUnique({
         where: { id },
         include: {
           _count: {
@@ -265,7 +265,7 @@ const masterFloorController = {
         )
       }
 
-      await prisma.masterFloor.update({
+      await prisma.floor.update({
         where: { id },
         data: { status: newStatus }
       })

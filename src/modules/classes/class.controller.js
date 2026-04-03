@@ -2,27 +2,66 @@ const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
 
-const masterClassController = {
+const formatClass = (item) => ({
+  id: item.id,
+  name: item.name,
+  study_program_id: item.study_program_id,
+  study_program_name: item.study_program?.name || null,
+  status: item.status,
+  created_at: item.created_at,
+  updated_at: item.updated_at
+})
+
+const ensureStudyProgramExists = async (studyProgramId) => {
+  return prisma.studyProgram.findUnique({
+    where: { id: studyProgramId }
+  })
+}
+
+const findClassConflict = async ({ id, name, study_program_id }) => {
+  if (!name || !study_program_id) {
+    return null
+  }
+
+  return prisma.class.findFirst({
+    where: {
+      study_program_id,
+      name: {
+        equals: name,
+        mode: 'insensitive'
+      },
+      ...(id ? { NOT: { id } } : {})
+    }
+  })
+}
+
+const classController = {
   create: async (req, res) => {
     try {
-      const { name, status } = req.body || {}
+      const { name, study_program_id, status } = req.body || {}
 
-      const existingMasterClass = await prisma.masterClass.findFirst({
-        where: {
-          name: {
-            equals: name,
-            mode: 'insensitive'
-          }
-        }
-      })
-
-      if (existingMasterClass) {
-        return error(res, 'Master class name already exists', 400)
+      const studyProgram = await ensureStudyProgramExists(study_program_id)
+      if (!studyProgram) {
+        return error(res, 'Study program not found', 404)
       }
 
-      await prisma.masterClass.create({
+      const existingClass = await findClassConflict({
+        name,
+        study_program_id
+      })
+
+      if (existingClass) {
+        return error(
+          res,
+          'Class name already exists in this study program',
+          400
+        )
+      }
+
+      await prisma.class.create({
         data: {
           name,
+          study_program_id,
           status:
             status !== undefined ? status === 'true' || status === true : true
         }
@@ -36,7 +75,7 @@ const masterClassController = {
 
   getAll: async (req, res) => {
     try {
-      const { q, status } = req.query || {}
+      const { q, status, study_program_id } = req.query || {}
       const statuses = [
         ...new Set(
           status
@@ -59,20 +98,37 @@ const masterClassController = {
         where.status = statuses[0] === 'true'
       }
 
-      const [masterClasses, total] = await Promise.all([
-        prisma.masterClass.findMany({
+      if (study_program_id) {
+        where.study_program_id = study_program_id
+      }
+
+      const [classes, total] = await Promise.all([
+        prisma.class.findMany({
           where,
           skip,
           take: perPage,
-          orderBy: [{ name: 'asc' }, { created_at: 'desc' }]
+          include: {
+            study_program: {
+              select: {
+                id: true,
+                name: true,
+                code: true
+              }
+            }
+          },
+          orderBy: [
+            { study_program: { name: 'asc' } },
+            { name: 'asc' },
+            { created_at: 'desc' }
+          ]
         }),
-        prisma.masterClass.count({ where })
+        prisma.class.count({ where })
       ])
 
       return success(
         res,
         'success',
-        masterClasses,
+        classes.map(formatClass),
         200,
         buildPagination(page, perPage, total)
       )
@@ -83,18 +139,26 @@ const masterClassController = {
 
   getAllClass: async (req, res) => {
     try {
-      const masterClasses = await prisma.masterClass.findMany({
-        select: {
-          id: true,
-          name: true,
-          status: true
+      const { study_program_id } = req.query || {}
+
+      const classes = await prisma.class.findMany({
+        where: {
+          status: true,
+          ...(study_program_id ? { study_program_id } : {})
         },
-        orderBy: {
-          name: 'asc'
-        }
+        include: {
+          study_program: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          }
+        },
+        orderBy: [{ study_program: { name: 'asc' } }, { name: 'asc' }]
       })
 
-      return success(res, 'success', masterClasses)
+      return success(res, 'success', classes.map(formatClass))
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -103,15 +167,24 @@ const masterClassController = {
   getById: async (req, res) => {
     try {
       const { id } = req.params
-      const masterClass = await prisma.masterClass.findUnique({
-        where: { id }
+      const existingClass = await prisma.class.findUnique({
+        where: { id },
+        include: {
+          study_program: {
+            select: {
+              id: true,
+              name: true,
+              code: true
+            }
+          }
+        }
       })
 
-      if (!masterClass) {
-        return error(res, 'Master class not found', 404)
+      if (!existingClass) {
+        return error(res, 'Class not found', 404)
       }
 
-      return success(res, 'success', masterClass)
+      return success(res, 'success', formatClass(existingClass))
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -120,34 +193,45 @@ const masterClassController = {
   update: async (req, res) => {
     try {
       const { id } = req.params
-      const { name, status } = req.body || {}
+      const { name, study_program_id, status } = req.body || {}
 
-      const existingMasterClass = await prisma.masterClass.findUnique({
+      const existingClass = await prisma.class.findUnique({
         where: { id }
       })
 
-      if (!existingMasterClass) {
-        return error(res, 'Master class not found', 404)
+      if (!existingClass) {
+        return error(res, 'Class not found', 404)
       }
 
-      if (name) {
-        const conflict = await prisma.masterClass.findFirst({
-          where: {
-            name: {
-              equals: name,
-              mode: 'insensitive'
-            },
-            NOT: { id }
-          }
+      const targetStudyProgramId =
+        study_program_id || existingClass.study_program_id
+
+      if (study_program_id) {
+        const studyProgram = await ensureStudyProgramExists(study_program_id)
+        if (!studyProgram) {
+          return error(res, 'Study program not found', 404)
+        }
+      }
+
+      if (name || study_program_id) {
+        const conflict = await findClassConflict({
+          id,
+          name: name || existingClass.name,
+          study_program_id: targetStudyProgramId
         })
 
         if (conflict) {
-          return error(res, 'Master class name already exists', 400)
+          return error(
+            res,
+            'Class name already exists in this study program',
+            400
+          )
         }
       }
 
       const updateData = {
         name,
+        study_program_id,
         status:
           status !== undefined
             ? status === 'true' || status === true
@@ -164,7 +248,7 @@ const masterClassController = {
         return error(res, 'No valid fields provided for update', 400)
       }
 
-      await prisma.masterClass.update({
+      await prisma.class.update({
         where: { id },
         data: updateData
       })
@@ -178,15 +262,15 @@ const masterClassController = {
   delete: async (req, res) => {
     try {
       const { id } = req.params
-      const existingMasterClass = await prisma.masterClass.findUnique({
+      const existingClass = await prisma.class.findUnique({
         where: { id }
       })
 
-      if (!existingMasterClass) {
-        return error(res, 'Master class not found', 404)
+      if (!existingClass) {
+        return error(res, 'Class not found', 404)
       }
 
-      await prisma.masterClass.delete({
+      await prisma.class.delete({
         where: { id }
       })
 
@@ -199,18 +283,18 @@ const masterClassController = {
   toggleStatus: async (req, res) => {
     try {
       const { id } = req.params
-      const existingMasterClass = await prisma.masterClass.findUnique({
+      const existingClass = await prisma.class.findUnique({
         where: { id }
       })
 
-      if (!existingMasterClass) {
-        return error(res, 'Master class not found', 404)
+      if (!existingClass) {
+        return error(res, 'Class not found', 404)
       }
 
-      await prisma.masterClass.update({
+      await prisma.class.update({
         where: { id },
         data: {
-          status: !existingMasterClass.status
+          status: !existingClass.status
         }
       })
 
@@ -221,4 +305,4 @@ const masterClassController = {
   }
 }
 
-module.exports = masterClassController
+module.exports = classController

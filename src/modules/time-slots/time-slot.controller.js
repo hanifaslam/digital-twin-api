@@ -46,7 +46,7 @@ const findTimeSlotConflict = async ({ id, name, start_time, end_time }) => {
     return null
   }
 
-  return prisma.masterTimeSlot.findFirst({
+  return prisma.timeSlot.findFirst({
     where: {
       OR: orConditions,
       ...(id ? { NOT: { id } } : {})
@@ -79,7 +79,7 @@ const masterTimeSlotController = {
         return error(res, 'Time slot range already exists', 400)
       }
 
-      await prisma.masterTimeSlot.create({
+      await prisma.timeSlot.create({
         data: {
           name,
           start_time: normalizedStartTime,
@@ -95,7 +95,7 @@ const masterTimeSlotController = {
 
   getAllActive: async (req, res) => {
     try {
-      const timeSlots = await prisma.masterTimeSlot.findMany({
+      const timeSlots = await prisma.timeSlot.findMany({
         orderBy: [{ start_time: 'asc' }, { name: 'asc' }]
       })
 
@@ -123,13 +123,13 @@ const masterTimeSlotController = {
       }
 
       const [timeSlots, total] = await Promise.all([
-        prisma.masterTimeSlot.findMany({
+        prisma.timeSlot.findMany({
           where,
           skip,
           take: perPage,
           orderBy: [{ start_time: 'asc' }, { name: 'asc' }]
         }),
-        prisma.masterTimeSlot.count({ where })
+        prisma.timeSlot.count({ where })
       ])
 
       return success(
@@ -147,7 +147,7 @@ const masterTimeSlotController = {
   getById: async (req, res) => {
     try {
       const { id } = req.params
-      const timeSlot = await prisma.masterTimeSlot.findUnique({
+      const timeSlot = await prisma.timeSlot.findUnique({
         where: { id }
       })
 
@@ -166,7 +166,7 @@ const masterTimeSlotController = {
       const { id } = req.params
       const { name, start_time, end_time } = req.body || {}
 
-      const existingTimeSlot = await prisma.masterTimeSlot.findUnique({
+      const existingTimeSlot = await prisma.timeSlot.findUnique({
         where: { id }
       })
 
@@ -217,7 +217,7 @@ const masterTimeSlotController = {
         return error(res, 'No valid fields provided for update', 400)
       }
 
-      await prisma.masterTimeSlot.update({
+      await prisma.timeSlot.update({
         where: { id },
         data: updateData
       })
@@ -231,7 +231,7 @@ const masterTimeSlotController = {
   delete: async (req, res) => {
     try {
       const { id } = req.params
-      const existingTimeSlot = await prisma.masterTimeSlot.findUnique({
+      const existingTimeSlot = await prisma.timeSlot.findUnique({
         where: { id }
       })
 
@@ -239,7 +239,7 @@ const masterTimeSlotController = {
         return error(res, 'Time slot not found', 404)
       }
 
-      await prisma.masterTimeSlot.delete({
+      await prisma.timeSlot.delete({
         where: { id }
       })
 

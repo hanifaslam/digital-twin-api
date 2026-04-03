@@ -19,11 +19,11 @@ async function main() {
   await prisma.lecturer.deleteMany({})
   await prisma.user.deleteMany({})
   await prisma.room.deleteMany({})
-  await prisma.masterFloor.deleteMany({})
-  await prisma.masterTimeSlot.deleteMany({})
-  await prisma.masterClass.deleteMany({})
-  await prisma.building.deleteMany({})
+  await prisma.class.deleteMany({})
   await prisma.studyProgram.deleteMany({})
+  await prisma.timeSlot.deleteMany({})
+  await prisma.floor.deleteMany({})
+  await prisma.building.deleteMany({})
   await prisma.rolePermission.deleteMany({})
   await prisma.permission.deleteMany({})
   await prisma.module.deleteMany({})
@@ -133,7 +133,7 @@ async function main() {
   ]
   const floors = []
   for (const floor of floorsData) {
-    floors.push(await prisma.masterFloor.create({ data: floor }))
+    floors.push(await prisma.floor.create({ data: floor }))
   }
 
   // 7. Master Time Slots
@@ -148,17 +148,17 @@ async function main() {
     { name: 'Jam ke 13', start_time: '17:30', end_time: '18:15' }
   ]
   for (const timeSlot of timeSlotsData) {
-    await prisma.masterTimeSlot.create({ data: timeSlot })
+    await prisma.timeSlot.create({ data: timeSlot })
   }
 
   // 8. Master Classes
   const masterClassesData = [
-    { name: 'Kelas A' },
-    { name: 'Kelas B' },
-    { name: 'Kelas C' }
+    { name: 'Kelas A', study_program_id: studyPrograms[0].id },
+    { name: 'Kelas B', study_program_id: studyPrograms[1].id },
+    { name: 'Kelas C', study_program_id: studyPrograms[2].id }
   ]
   for (const masterClass of masterClassesData) {
-    await prisma.masterClass.create({ data: masterClass })
+    await prisma.class.create({ data: masterClass })
   }
 
   // 9. Rooms (5)

@@ -61,7 +61,7 @@ const roomController = {
           where: { id: building_id },
           select: { id: true }
         }),
-        prisma.masterFloor.findUnique({
+        prisma.floor.findUnique({
           where: { id: floor_id },
           select: { id: true }
         })
@@ -291,7 +291,7 @@ const roomController = {
       }
 
       if (floor_id) {
-        const floorExists = await prisma.masterFloor.findUnique({
+        const floorExists = await prisma.floor.findUnique({
           where: { id: floor_id },
           select: { id: true }
         })
