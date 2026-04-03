@@ -68,7 +68,7 @@ model Room {
   building_id   String
   building      Building       @relation(fields: [building_id], references: [id])
   floor_id      String
-  floor         MasterFloor    @relation(fields: [floor_id], references: [id])
+  floor         Floor          @relation(fields: [floor_id], references: [id])
   status        Boolean        @default(true)
   schedules     Schedule[]
   attendances   Attendance[]
@@ -93,7 +93,7 @@ model Building {
   updated_at  DateTime @updatedAt
 }
 
-model MasterFloor {
+model Floor {
   id          String   @id @default(cuid())
   name        String   @unique
   status      Boolean  @default(true)
@@ -102,7 +102,7 @@ model MasterFloor {
   rooms       Room[]
 }
 
-model MasterTimeSlot {
+model TimeSlot {
   id          String   @id @default(cuid())
   name        String   @unique
   start_time  String
@@ -112,6 +112,14 @@ model MasterTimeSlot {
 
   @@unique([start_time, end_time])
   @@index([start_time])
+}
+
+model Class {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  status      Boolean  @default(true)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 }
 
 model Lecturer {

@@ -14,6 +14,7 @@ const masterFloorRoutes = require('../modules/floors/floor.routes')
 const courseRoutes = require('../modules/courses/course.routes')
 const helperRoutes = require('../modules/helpers/helper.routes')
 const masterTimeSlotRoutes = require('../modules/time-slots/time-slot.routes')
+const masterClassRoutes = require('../modules/classes/class.routes')
 
 router.use('/auth', authRoutes)
 
@@ -29,5 +30,6 @@ router.use('/floors', authMiddleware, masterFloorRoutes)
 router.use('/courses', authMiddleware, courseRoutes)
 router.use('/helpers', authMiddleware, helperRoutes)
 router.use('/time-slots', authMiddleware, masterTimeSlotRoutes)
+router.use('/classes', authMiddleware, masterClassRoutes)
 
 module.exports = router

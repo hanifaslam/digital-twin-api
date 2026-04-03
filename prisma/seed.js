@@ -21,6 +21,7 @@ async function main() {
   await prisma.room.deleteMany({})
   await prisma.masterFloor.deleteMany({})
   await prisma.masterTimeSlot.deleteMany({})
+  await prisma.masterClass.deleteMany({})
   await prisma.building.deleteMany({})
   await prisma.studyProgram.deleteMany({})
   await prisma.rolePermission.deleteMany({})
@@ -150,7 +151,17 @@ async function main() {
     await prisma.masterTimeSlot.create({ data: timeSlot })
   }
 
-  // 8. Rooms (5)
+  // 8. Master Classes
+  const masterClassesData = [
+    { name: 'Kelas A' },
+    { name: 'Kelas B' },
+    { name: 'Kelas C' }
+  ]
+  for (const masterClass of masterClassesData) {
+    await prisma.masterClass.create({ data: masterClass })
+  }
+
+  // 9. Rooms (5)
   const rooms = []
   for (let i = 0; i < 5; i++) {
     rooms.push(
@@ -164,7 +175,7 @@ async function main() {
     )
   }
 
-  // 9. Users & Lecturers (5)
+  // 10. Users & Lecturers (5)
   // Super Admin
   await prisma.user.create({
     data: {
@@ -222,7 +233,7 @@ async function main() {
     )
   }
 
-  // 10. Schedules (5)
+  // 11. Schedules (5)
   const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat']
   for (let i = 0; i < 5; i++) {
     await prisma.schedule.create({
@@ -236,14 +247,14 @@ async function main() {
     })
   }
 
-  // 11. Device Status (5)
+  // 12. Device Status (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.deviceStatus.create({
   //     data: { room_id: rooms[i].id, light: true, ac: false }
   //   })
   // }
 
-  // 12. Sensor Logs (5)
+  // 13. Sensor Logs (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.sensorLog.create({
   //     data: {
@@ -258,7 +269,7 @@ async function main() {
   //   })
   // }
 
-  // 13. Attendances (5)
+  // 14. Attendances (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.attendance.create({
   //     data: {
