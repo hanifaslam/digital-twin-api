@@ -1,6 +1,7 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const redisClient = require('../../config/redis')
+const { buildPagination } = require('../../utils/pagination')
 
 const normalizeStudyProgramIds = (studyProgramIds) => [
   ...new Set((studyProgramIds || []).map((id) => id?.trim()).filter(Boolean))
@@ -168,12 +169,7 @@ const lecturerController = {
         updated_at: lecturer.updated_at
       }))
 
-      const metadata = {
-        per_page: perPage,
-        current_page: page,
-        total_row: total,
-        total_page: Math.ceil(total / perPage)
-      }
+      const metadata = buildPagination(page, perPage, total)
 
       return success(res, 'success', formattedData, 200, metadata)
     } catch (err) {

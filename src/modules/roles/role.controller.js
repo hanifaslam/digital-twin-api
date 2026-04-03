@@ -1,5 +1,36 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const redisClient = require('../../config/redis')
+const { buildPagination } = require('../../utils/pagination')
+
+const withDeactivationFlag = (role) => {
+  const userCount = role?._count?.users || 0
+  const { _count, ...roleData } = role
+
+  return {
+    ...roleData,
+    can_deactivate: userCount === 0
+  }
+}
+
+const invalidateRoleUserCaches = async (roleId) => {
+  const users = await prisma.user.findMany({
+    where: { role_id: roleId },
+    select: { id: true }
+  })
+
+  if (users.length === 0) {
+    return
+  }
+
+  await Promise.all(
+    users.map((user) =>
+      redisClient
+        .del(`user:auth:${user.id}`)
+        .catch((err) => console.error('Redis Del Error:', err))
+    )
+  )
+}
 
 const roleController = {
   getAllRoles: async (req, res) => {
@@ -92,18 +123,25 @@ const roleController = {
         where.status = statuses[0] === 'true'
       }
 
-
       const [roles, total] = await Promise.all([
         prisma.role.findMany({
           where,
           skip,
           take: limit,
+          include: {
+            _count: {
+              select: {
+                users: true
+              }
+            }
+          },
           orderBy: { created_at: 'desc' }
         }),
         prisma.role.count({ where })
       ])
 
       const formattedRoles = roles.map((role) => ({
+        ...withDeactivationFlag(role),
         id: role.id,
         code: role.code,
         name: role.name,
@@ -112,12 +150,7 @@ const roleController = {
         is_active: role.status
       }))
 
-      const metadata = {
-        per_page: limit,
-        current_page: page,
-        total_row: total,
-        total_page: Math.ceil(total / limit)
-      }
+      const metadata = buildPagination(page, limit, total)
 
       return success(res, 'success', formattedRoles, 200, metadata)
     } catch (err) {
@@ -132,7 +165,12 @@ const roleController = {
       const role = await prisma.role.findUnique({
         where: { id },
         include: {
-          permissions: true
+          permissions: true,
+          _count: {
+            select: {
+              users: true
+            }
+          }
         }
       })
 
@@ -180,6 +218,7 @@ const roleController = {
         name: role.name,
         status: role.status,
         is_active: role.status,
+        can_deactivate: role._count.users === 0,
         access: access
       }
 
@@ -194,9 +233,26 @@ const roleController = {
       const { id } = req.params
       const { name, status, code, access } = req.body || {}
 
-      const roleExists = await prisma.role.findUnique({ where: { id } })
+      const roleExists = await prisma.role.findUnique({
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              users: true
+            }
+          }
+        }
+      })
       if (!roleExists) {
         return error(res, 'Role not found', 404)
+      }
+
+      if (status === false && roleExists._count.users > 0) {
+        return error(
+          res,
+          'Cannot deactivate role because it is still assigned to users',
+          400
+        )
       }
 
       const checkedIds = []
@@ -233,24 +289,28 @@ const roleController = {
           }
         })
 
-        await tx.rolePermission.deleteMany({
-          where: { role_id: id }
-        })
-
-        const validPermissions = await tx.permission.findMany({
-          where: { id: { in: checkedIds } },
-          select: { id: true }
-        })
-
-        if (validPermissions.length > 0) {
-          await tx.rolePermission.createMany({
-            data: validPermissions.map((p) => ({
-              role_id: id,
-              permission_id: p.id
-            }))
+        if (hasAccessUpdate) {
+          await tx.rolePermission.deleteMany({
+            where: { role_id: id }
           })
+
+          const validPermissions = await tx.permission.findMany({
+            where: { id: { in: checkedIds } },
+            select: { id: true }
+          })
+
+          if (validPermissions.length > 0) {
+            await tx.rolePermission.createMany({
+              data: validPermissions.map((p) => ({
+                role_id: id,
+                permission_id: p.id
+              }))
+            })
+          }
         }
       })
+
+      await invalidateRoleUserCaches(id)
 
       return success(res, 'success', null)
     } catch (err) {
@@ -262,17 +322,34 @@ const roleController = {
     try {
       const { id } = req.params
 
-      const role = await prisma.role.findUnique({ where: { id } })
-      if (!role) {
-        return responseHandler(res, false, 'Role not found', null, 404)
-      }
+      const role = await prisma.role.findUnique({
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              users: true
+            }
+          }
+        }
+      })
+      if (!role) return error(res, 'Role not found', 404)
 
       const newStatus = !role.status
+
+      if (!newStatus && role._count.users > 0) {
+        return error(
+          res,
+          'Cannot deactivate role because it is still assigned to users',
+          400
+        )
+      }
 
       await prisma.role.update({
         where: { id },
         data: { status: newStatus }
       })
+
+      await invalidateRoleUserCaches(id)
 
       return success(res, 'success', null)
     } catch (err) {

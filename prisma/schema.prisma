@@ -20,6 +20,7 @@ model User {
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
   lecturer   Lecturer?
+  helper     Helper?
 
   @@index([role_id])
 }
@@ -67,7 +68,7 @@ model Room {
   building_id   String
   building      Building       @relation(fields: [building_id], references: [id])
   floor_id      String
-  floor         MasterFloor    @relation(fields: [floor_id], references: [id])
+  floor         Floor          @relation(fields: [floor_id], references: [id])
   status        Boolean        @default(true)
   schedules     Schedule[]
   attendances   Attendance[]
@@ -87,17 +88,43 @@ model Building {
   code        String?  @unique
   status      Boolean  @default(true)
   rooms       Room[]
+  helpers     HelperBuilding[]
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 }
 
-model MasterFloor {
+model Floor {
   id          String   @id @default(cuid())
   name        String   @unique
   status      Boolean  @default(true)
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
   rooms       Room[]
+}
+
+model TimeSlot {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  start_time  String
+  end_time    String
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  @@unique([start_time, end_time])
+  @@index([start_time])
+}
+
+model Class {
+  id               String       @id @default(cuid())
+  name             String
+  study_program_id String
+  study_program    StudyProgram @relation(fields: [study_program_id], references: [id])
+  status           Boolean      @default(true)
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  @@unique([study_program_id, name])
+  @@index([study_program_id])
 }
 
 model Lecturer {
@@ -112,6 +139,17 @@ model Lecturer {
   updated_at       DateTime              @updatedAt
 }
 
+model Helper {
+  id           String       @id @default(cuid())
+  phone_number String?
+  user_id      String       @unique
+  user         User         @relation(fields: [user_id], references: [id])
+  status       Boolean      @default(true)
+  buildings    HelperBuilding[]
+  created_at   DateTime     @default(now())
+  updated_at   DateTime     @updatedAt
+}
+
 model StudyProgram {
   id          String                @id @default(cuid())
   name        String                @unique
@@ -120,6 +158,25 @@ model StudyProgram {
   created_at  DateTime              @default(now())
   updated_at  DateTime              @updatedAt
   lecturers   LecturerStudyProgram[]
+  courses     Course[]
+  classes     Class[]
+}
+
+model Course {
+  id               String       @id @default(cuid())
+  code             String
+  name             String
+  semester         CourseSemester
+  study_program_id String
+  study_program    StudyProgram @relation(fields: [study_program_id], references: [id])
+  status           Boolean      @default(true)
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+
+  @@unique([study_program_id, code])
+  @@unique([study_program_id, name])
+  @@index([study_program_id])
+  @@index([semester])
 }
 
 model LecturerStudyProgram {
@@ -130,6 +187,16 @@ model LecturerStudyProgram {
 
   @@id([lecturer_id, study_program_id])
   @@index([study_program_id])
+}
+
+model HelperBuilding {
+  helper_id String
+  building_id String
+  helper    Helper   @relation(fields: [helper_id], references: [id], onDelete: Cascade)
+  building  Building @relation(fields: [building_id], references: [id], onDelete: Cascade)
+
+  @@id([helper_id, building_id])
+  @@index([building_id])
 }
 
 model Schedule {
@@ -204,6 +271,17 @@ enum DeviceType {
   AC
   LAMP
   CCTV
+}
+
+enum CourseSemester {
+  SEMESTER_1
+  SEMESTER_2
+  SEMESTER_3
+  SEMESTER_4
+  SEMESTER_5
+  SEMESTER_6
+  SEMESTER_7
+  SEMESTER_8
 }
 
 

@@ -4,6 +4,40 @@ const crypto = require('crypto')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 
+const getRoleIdentity = (role = {}) =>
+  (role.code || role.name || '')
+    .toString()
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, '_')
+
+const ensureDashboardAccess = (modules, permissions, role) => {
+  const hasDashboardPermission = permissions.some(
+    (rp) => rp?.permission?.name === 'DASHBOARD'
+  )
+  const roleIdentity = getRoleIdentity(role)
+  const isElevatedRole = ['SA', 'SUPER_ADMIN', 'HLP', 'HELPER'].includes(
+    roleIdentity
+  )
+
+  if (
+    modules.some((module) => module.code === 'dashboard') ||
+    (!hasDashboardPermission && !isElevatedRole)
+  ) {
+    return modules
+  }
+
+  return [
+    {
+      id: 'dashboard',
+      name: 'Dashboard',
+      code: 'dashboard',
+      children: []
+    },
+    ...modules
+  ]
+}
+
 const generateTokens = (user) => {
   const accessToken = jwt.sign(
     { id: user.id, username: user.username, email: user.email },
@@ -153,7 +187,11 @@ const getMe = async (req, res) => {
       )
     }
 
-    const access = formatAccess(user.role.permissions)
+    const access = ensureDashboardAccess(
+      formatAccess(user.role.permissions),
+      user.role.permissions,
+      user.role
+    )
 
     return success(res, 'success', {
       id: user.id,

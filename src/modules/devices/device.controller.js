@@ -1,6 +1,7 @@
 const { DeviceType } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const { buildPagination } = require('../../utils/pagination')
 
 const deviceController = {
   create: async (req, res) => {
@@ -104,12 +105,7 @@ const deviceController = {
         updated_at: device.updated_at
       }))
 
-      const metadata = {
-        per_page: perPage,
-        current_page: page,
-        total_row: total,
-        total_page: Math.ceil(total / perPage)
-      }
+      const metadata = buildPagination(page, perPage, total)
 
       return success(res, 'success', result, 200, metadata)
     } catch (err) {

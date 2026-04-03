@@ -13,12 +13,25 @@ const {
 // Public endpoints
 router.post('/login', validate(loginSchema), authController.login)
 router.post('/refresh', authController.refreshToken)
-router.post('/forgot-password', validate(forgotPasswordSchema), authController.forgotPassword)
-router.post('/reset-password/:token', validate(resetPasswordSchema), authController.resetPassword)
+router.post(
+  '/forgot-password',
+  validate(forgotPasswordSchema),
+  authController.forgotPassword
+)
+router.post(
+  '/reset-password/:token',
+  validate(resetPasswordSchema),
+  authController.resetPassword
+)
 
 // Protected endpoints
 router.get('/me', authMiddleware, authController.getMe)
-router.post('/change-password', authMiddleware, validate(changePasswordSchema), authController.changePassword)
+router.post(
+  '/change-password',
+  authMiddleware,
+  validate(changePasswordSchema),
+  authController.changePassword
+)
 router.post('/logout', authController.logout)
 
 module.exports = router

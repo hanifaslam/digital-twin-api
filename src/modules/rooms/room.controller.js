@@ -1,5 +1,25 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const { buildPagination } = require('../../utils/pagination')
+
+const getRoomDependencyCount = (room) => {
+  const schedules = room?._count?.schedules || 0
+  const attendances = room?._count?.attendances || 0
+  const sensorLogs = room?._count?.sensor_logs || 0
+  const devices = room?._count?.devices || 0
+  const deviceStatus = room?.device_status ? 1 : 0
+
+  return schedules + attendances + sensorLogs + devices + deviceStatus
+}
+
+const withDeactivationFlag = (room) => {
+  const { _count, device_status, ...roomData } = room
+
+  return {
+    ...roomData,
+    can_deactivate: getRoomDependencyCount(room) === 0
+  }
+}
 
 const roomController = {
   getAllRooms: async (req, res) => {
@@ -41,7 +61,7 @@ const roomController = {
           where: { id: building_id },
           select: { id: true }
         }),
-        prisma.masterFloor.findUnique({
+        prisma.floor.findUnique({
           where: { id: floor_id },
           select: { id: true }
         })
@@ -60,7 +80,8 @@ const roomController = {
           name,
           building_id,
           floor_id,
-          status: status !== undefined ? (status === 'true' || status === true) : true
+          status:
+            status !== undefined ? status === 'true' || status === true : true
         }
       })
 
@@ -102,7 +123,6 @@ const roomController = {
         where.status = statuses[0] === 'true'
       }
 
-
       if (buildingIds?.length === 1) {
         where.building_id = buildingIds[0]
       }
@@ -126,6 +146,17 @@ const roomController = {
             },
             floor: {
               select: { id: true, name: true }
+            },
+            _count: {
+              select: {
+                schedules: true,
+                attendances: true,
+                sensor_logs: true,
+                devices: true
+              }
+            },
+            device_status: {
+              select: { id: true }
             }
           },
           skip,
@@ -137,15 +168,11 @@ const roomController = {
         prisma.room.count({ where })
       ])
 
-      const metadata = {
-        per_page: perPage,
-        current_page: page,
-        total_row: total,
-        total_page: Math.ceil(total / perPage)
-      }
+      const metadata = buildPagination(page, perPage, total)
 
       const formattedRooms = rooms.map((room) => {
-        const { building, floor, status, created_at, updated_at, ...roomData } = room
+        const { building, floor, status, created_at, updated_at, ...roomData } =
+          withDeactivationFlag(room)
         return {
           ...roomData,
           building_name: building?.name,
@@ -169,13 +196,25 @@ const roomController = {
         where: { id },
         include: {
           building: true,
-          floor: true
+          floor: true,
+          _count: {
+            select: {
+              schedules: true,
+              attendances: true,
+              sensor_logs: true,
+              devices: true
+            }
+          },
+          device_status: {
+            select: { id: true }
+          }
         }
       })
 
       if (!room) return error(res, 'Room not found', 404)
 
-      const { building, floor, status, created_at, updated_at, ...roomData } = room
+      const { building, floor, status, created_at, updated_at, ...roomData } =
+        withDeactivationFlag(room)
       const formattedRoom = {
         ...roomData,
         building_name: building?.name,
@@ -197,9 +236,34 @@ const roomController = {
       const { name, building_id, floor_id, status } = req.body || {}
 
       const roomExists = await prisma.room.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              schedules: true,
+              attendances: true,
+              sensor_logs: true,
+              devices: true
+            }
+          },
+          device_status: {
+            select: { id: true }
+          }
+        }
       })
       if (!roomExists) return error(res, 'Room not found', 404)
+
+      if (
+        status !== undefined &&
+        (status === false || status === 'false') &&
+        getRoomDependencyCount(roomExists) > 0
+      ) {
+        return error(
+          res,
+          'Cannot deactivate room because it is still used by related data',
+          400
+        )
+      }
 
       if (name && (building_id || roomExists.building_id)) {
         const conflict = await prisma.room.findFirst({
@@ -227,7 +291,7 @@ const roomController = {
       }
 
       if (floor_id) {
-        const floorExists = await prisma.masterFloor.findUnique({
+        const floorExists = await prisma.floor.findUnique({
           where: { id: floor_id },
           select: { id: true }
         })
@@ -241,7 +305,10 @@ const roomController = {
         name,
         building_id,
         floor_id,
-        status: status !== undefined ? (status === 'true' || status === true) : undefined
+        status:
+          status !== undefined
+            ? status === 'true' || status === true
+            : undefined
       }
 
       Object.keys(updateData).forEach(
@@ -334,11 +401,32 @@ const roomController = {
     try {
       const { id } = req.params
       const room = await prisma.room.findUnique({
-        where: { id }
+        where: { id },
+        include: {
+          _count: {
+            select: {
+              schedules: true,
+              attendances: true,
+              sensor_logs: true,
+              devices: true
+            }
+          },
+          device_status: {
+            select: { id: true }
+          }
+        }
       })
       if (!room) return error(res, 'Room not found', 404)
 
       const newStatus = !room.status
+
+      if (!newStatus && getRoomDependencyCount(room) > 0) {
+        return error(
+          res,
+          'Cannot deactivate room because it is still used by related data',
+          400
+        )
+      }
 
       await prisma.room.update({
         where: { id },

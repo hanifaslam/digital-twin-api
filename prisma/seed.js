@@ -19,9 +19,11 @@ async function main() {
   await prisma.lecturer.deleteMany({})
   await prisma.user.deleteMany({})
   await prisma.room.deleteMany({})
-  await prisma.masterFloor.deleteMany({})
-  await prisma.building.deleteMany({})
+  await prisma.class.deleteMany({})
   await prisma.studyProgram.deleteMany({})
+  await prisma.timeSlot.deleteMany({})
+  await prisma.floor.deleteMany({})
+  await prisma.building.deleteMany({})
   await prisma.rolePermission.deleteMany({})
   await prisma.permission.deleteMany({})
   await prisma.module.deleteMany({})
@@ -49,6 +51,7 @@ async function main() {
     { name: 'ROOM', module_code: 'master' },
     { name: 'STUDY_PROGRAM', module_code: 'master' },
     { name: 'LECTURER', module_code: 'master' },
+    { name: 'HELPER', module_code: 'master' },
     { name: 'DEVICE', module_code: 'master' }
   ]
   const perms = {}
@@ -58,11 +61,12 @@ async function main() {
     })
   }
 
-  // 3. Roles (3)
+  // 3. Roles
   const rolesData = [
     { name: 'Super Admin', code: 'SA' },
     { name: 'Dosen', code: 'DSN' },
-    { name: 'Staff', code: 'STF' }
+    { name: 'Staff', code: 'STF' },
+    { name: 'Helper', code: 'HLP' }
   ]
   const allPerms = await prisma.permission.findMany()
   const roles = {}
@@ -76,6 +80,10 @@ async function main() {
     let rolePerms = []
     if (r.code === 'SA') {
       rolePerms = allPerms
+    } else if (r.code === 'HLP') {
+      rolePerms = allPerms.filter((p) =>
+        ['DASHBOARD', 'HELPER'].includes(p.name)
+      )
     } else {
       rolePerms = allPerms.filter((p) => p.name === 'DASHBOARD')
     }
@@ -125,10 +133,35 @@ async function main() {
   ]
   const floors = []
   for (const floor of floorsData) {
-    floors.push(await prisma.masterFloor.create({ data: floor }))
+    floors.push(await prisma.floor.create({ data: floor }))
   }
 
-  // 7. Rooms (5)
+  // 7. Master Time Slots
+  const timeSlotsData = [
+    { name: 'Jam ke 2', start_time: '07:45', end_time: '08:30' },
+    { name: 'Jam ke 3', start_time: '08:30', end_time: '09:15' },
+    { name: 'Jam ke 9', start_time: '14:00', end_time: '14:45' },
+    { name: 'Jam ke 10', start_time: '14:45', end_time: '15:30' },
+    { name: 'Jam ke 10B', start_time: '15:30', end_time: '16:00' },
+    { name: 'Jam ke 11', start_time: '16:00', end_time: '16:45' },
+    { name: 'Jam ke 12', start_time: '16:45', end_time: '17:30' },
+    { name: 'Jam ke 13', start_time: '17:30', end_time: '18:15' }
+  ]
+  for (const timeSlot of timeSlotsData) {
+    await prisma.timeSlot.create({ data: timeSlot })
+  }
+
+  // 8. Master Classes
+  const masterClassesData = [
+    { name: 'Kelas A', study_program_id: studyPrograms[0].id },
+    { name: 'Kelas B', study_program_id: studyPrograms[1].id },
+    { name: 'Kelas C', study_program_id: studyPrograms[2].id }
+  ]
+  for (const masterClass of masterClassesData) {
+    await prisma.class.create({ data: masterClass })
+  }
+
+  // 9. Rooms (5)
   const rooms = []
   for (let i = 0; i < 5; i++) {
     rooms.push(
@@ -142,7 +175,7 @@ async function main() {
     )
   }
 
-  // 8. Users & Lecturers (5)
+  // 10. Users & Lecturers (5)
   // Super Admin
   await prisma.user.create({
     data: {
@@ -200,7 +233,7 @@ async function main() {
     )
   }
 
-  // 9. Schedules (5)
+  // 11. Schedules (5)
   const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat']
   for (let i = 0; i < 5; i++) {
     await prisma.schedule.create({
@@ -214,14 +247,14 @@ async function main() {
     })
   }
 
-  // 10. Device Status (5)
+  // 12. Device Status (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.deviceStatus.create({
   //     data: { room_id: rooms[i].id, light: true, ac: false }
   //   })
   // }
 
-  // 11. Sensor Logs (5)
+  // 13. Sensor Logs (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.sensorLog.create({
   //     data: {
@@ -236,7 +269,7 @@ async function main() {
   //   })
   // }
 
-  // 12. Attendances (5)
+  // 14. Attendances (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.attendance.create({
   //     data: {
