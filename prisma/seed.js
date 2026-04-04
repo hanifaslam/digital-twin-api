@@ -13,12 +13,16 @@ async function main() {
   // Order matters for deletion due to foreign key constraints
   await prisma.sensorLog.deleteMany({})
   await prisma.deviceStatus.deleteMany({})
+  await prisma.device.deleteMany({})
   await prisma.attendance.deleteMany({})
   await prisma.schedule.deleteMany({})
+  await prisma.helperBuilding.deleteMany({})
   await prisma.lecturerStudyProgram.deleteMany({})
+  await prisma.helper.deleteMany({})
   await prisma.lecturer.deleteMany({})
   await prisma.user.deleteMany({})
   await prisma.room.deleteMany({})
+  await prisma.course.deleteMany({})
   await prisma.class.deleteMany({})
   await prisma.studyProgram.deleteMany({})
   await prisma.timeSlot.deleteMany({})
@@ -147,8 +151,9 @@ async function main() {
     { name: 'Jam ke 12', start_time: '16:45', end_time: '17:30' },
     { name: 'Jam ke 13', start_time: '17:30', end_time: '18:15' }
   ]
+  const timeSlots = []
   for (const timeSlot of timeSlotsData) {
-    await prisma.timeSlot.create({ data: timeSlot })
+    timeSlots.push(await prisma.timeSlot.create({ data: timeSlot }))
   }
 
   // 8. Master Classes
@@ -157,8 +162,9 @@ async function main() {
     { name: 'Kelas B', study_program_id: studyPrograms[1].id },
     { name: 'Kelas C', study_program_id: studyPrograms[2].id }
   ]
+  const masterClasses = []
   for (const masterClass of masterClassesData) {
-    await prisma.class.create({ data: masterClass })
+    masterClasses.push(await prisma.class.create({ data: masterClass }))
   }
 
   // 9. Rooms (5)
@@ -175,7 +181,33 @@ async function main() {
     )
   }
 
-  // 10. Users & Lecturers (5)
+  // 10. Courses
+  const coursesData = [
+    {
+      code: 'IF101',
+      name: 'Algoritma dan Pemrograman',
+      semester: 'SEMESTER_1',
+      study_program_id: studyPrograms[0].id
+    },
+    {
+      code: 'TRK201',
+      name: 'Sistem Embedded',
+      semester: 'SEMESTER_3',
+      study_program_id: studyPrograms[1].id
+    },
+    {
+      code: 'CS301',
+      name: 'Keamanan Jaringan',
+      semester: 'SEMESTER_5',
+      study_program_id: studyPrograms[2].id
+    }
+  ]
+  const courses = []
+  for (const course of coursesData) {
+    courses.push(await prisma.course.create({ data: course }))
+  }
+
+  // 11. Users & Lecturers (5)
   // Super Admin
   await prisma.user.create({
     data: {
@@ -233,28 +265,29 @@ async function main() {
     )
   }
 
-  // 11. Schedules (5)
-  const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat']
-  for (let i = 0; i < 5; i++) {
+  // 12. Schedules
+  for (let i = 0; i < 3; i++) {
     await prisma.schedule.create({
       data: {
-        lecturer_id: lecturers[i].id,
+        study_program_id: studyPrograms[i].id,
+        class_id: masterClasses[i].id,
         room_id: rooms[i].id,
-        day: days[i],
-        start_time: '08:00',
-        end_time: '10:00'
+        lecturer_id: lecturers[i].id,
+        course_id: courses[i].id,
+        time_slot_id: timeSlots[i].id,
+        status: true
       }
     })
   }
 
-  // 12. Device Status (5)
+  // 13. Device Status (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.deviceStatus.create({
   //     data: { room_id: rooms[i].id, light: true, ac: false }
   //   })
   // }
 
-  // 13. Sensor Logs (5)
+  // 14. Sensor Logs (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.sensorLog.create({
   //     data: {
@@ -269,7 +302,7 @@ async function main() {
   //   })
   // }
 
-  // 14. Attendances (5)
+  // 15. Attendances (5)
   // for (let i = 0; i < 5; i++) {
   //   await prisma.attendance.create({
   //     data: {

@@ -7,20 +7,20 @@ datasource db {
 }
 
 model User {
-  id         String    @id @default(cuid())
-  name       String
-  username   String    @unique
-  email      String    @unique
-  password   String
-  role_id    String
-  role       Role      @relation(fields: [role_id], references: [id])
-  status     Boolean   @default(true)
+  id                     String    @id @default(cuid())
+  name                   String
+  username               String    @unique
+  email                  String    @unique
+  password               String
+  role_id                String
+  role                   Role      @relation(fields: [role_id], references: [id])
+  status                 Boolean   @default(true)
   reset_password_token   String?
   reset_password_expires DateTime?
-  created_at DateTime  @default(now())
-  updated_at DateTime  @updatedAt
-  lecturer   Lecturer?
-  helper     Helper?
+  created_at             DateTime  @default(now())
+  updated_at             DateTime  @updatedAt
+  lecturer               Lecturer?
+  helper                 Helper?
 
   @@index([role_id])
 }
@@ -36,12 +36,12 @@ model Role {
 }
 
 model Permission {
-  id          String           @id @default(cuid())
-  name        String           @unique // Contoh: USER_CREATE, DEVICE_CONTROL
-  module_id   String
-  module      Module           @relation(fields: [module_id], references: [id])
-  roles       RolePermission[]
-  created_at  DateTime         @default(now())
+  id         String           @id @default(cuid())
+  name       String           @unique // Contoh: USER_CREATE, DEVICE_CONTROL
+  module_id  String
+  module     Module           @relation(fields: [module_id], references: [id])
+  roles      RolePermission[]
+  created_at DateTime         @default(now())
 }
 
 model Module {
@@ -83,32 +83,33 @@ model Room {
 }
 
 model Building {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  code        String?  @unique
-  status      Boolean  @default(true)
-  rooms       Room[]
-  helpers     HelperBuilding[]
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id         String           @id @default(cuid())
+  name       String           @unique
+  code       String?          @unique
+  status     Boolean          @default(true)
+  rooms      Room[]
+  helpers    HelperBuilding[]
+  created_at DateTime         @default(now())
+  updated_at DateTime         @updatedAt
 }
 
 model Floor {
-  id          String   @id @default(cuid())
-  name        String   @unique
-  status      Boolean  @default(true)
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
-  rooms       Room[]
+  id         String   @id @default(cuid())
+  name       String   @unique
+  status     Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+  rooms      Room[]
 }
 
 model TimeSlot {
-  id          String   @id @default(cuid())
-  name        String   @unique
+  id          String     @id @default(cuid())
+  name        String     @unique
   start_time  String
   end_time    String
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  schedules   Schedule[]
+  created_at  DateTime   @default(now())
+  updated_at  DateTime   @updatedAt
 
   @@unique([start_time, end_time])
   @@index([start_time])
@@ -119,6 +120,7 @@ model Class {
   name             String
   study_program_id String
   study_program    StudyProgram @relation(fields: [study_program_id], references: [id])
+  schedules        Schedule[]
   status           Boolean      @default(true)
   created_at       DateTime     @default(now())
   updated_at       DateTime     @updatedAt
@@ -140,14 +142,14 @@ model Lecturer {
 }
 
 model Helper {
-  id           String       @id @default(cuid())
+  id           String           @id @default(cuid())
   phone_number String?
-  user_id      String       @unique
-  user         User         @relation(fields: [user_id], references: [id])
-  status       Boolean      @default(true)
+  user_id      String           @unique
+  user         User             @relation(fields: [user_id], references: [id])
+  status       Boolean          @default(true)
   buildings    HelperBuilding[]
-  created_at   DateTime     @default(now())
-  updated_at   DateTime     @updatedAt
+  created_at   DateTime         @default(now())
+  updated_at   DateTime         @updatedAt
 }
 
 model StudyProgram {
@@ -160,6 +162,7 @@ model StudyProgram {
   lecturers   LecturerStudyProgram[]
   courses     Course[]
   classes     Class[]
+  schedules   Schedule[]
 }
 
 model Course {
@@ -169,6 +172,7 @@ model Course {
   semester         CourseSemester
   study_program_id String
   study_program    StudyProgram @relation(fields: [study_program_id], references: [id])
+  schedules        Schedule[]
   status           Boolean      @default(true)
   created_at       DateTime     @default(now())
   updated_at       DateTime     @updatedAt
@@ -190,37 +194,51 @@ model LecturerStudyProgram {
 }
 
 model HelperBuilding {
-  helper_id String
+  helper_id   String
   building_id String
-  helper    Helper   @relation(fields: [helper_id], references: [id], onDelete: Cascade)
-  building  Building @relation(fields: [building_id], references: [id], onDelete: Cascade)
+  helper      Helper   @relation(fields: [helper_id], references: [id], onDelete: Cascade)
+  building    Building @relation(fields: [building_id], references: [id], onDelete: Cascade)
 
   @@id([helper_id, building_id])
   @@index([building_id])
 }
 
 model Schedule {
-  id          String   @id @default(cuid())
+  id               String       @id @default(cuid())
+  study_program_id String
+  class_id         String
   lecturer_id String
-  room_id     String
-  day         String
-  start_time  String   // HH:mm
-  end_time    String   // HH:mm
-  lecturer    Lecturer @relation(fields: [lecturer_id], references: [id])
-  room        Room     @relation(fields: [room_id], references: [id])
+  room_id          String
+  course_id        String
+  time_slot_id     String
+  status           Boolean      @default(true)
+  created_at       DateTime     @default(now())
+  updated_at       DateTime     @updatedAt
+  study_program    StudyProgram @relation(fields: [study_program_id], references: [id])
+  class            Class        @relation(fields: [class_id], references: [id])
+  lecturer         Lecturer     @relation(fields: [lecturer_id], references: [id])
+  room             Room         @relation(fields: [room_id], references: [id])
+  course           Course       @relation(fields: [course_id], references: [id])
+  time_slot        TimeSlot     @relation(fields: [time_slot_id], references: [id])
 
-  @@index([lecturer_id, room_id, day])
+  @@unique([study_program_id, class_id, room_id, lecturer_id, course_id, time_slot_id])
+  @@index([study_program_id])
+  @@index([class_id])
+  @@index([lecturer_id])
+  @@index([room_id])
+  @@index([course_id])
+  @@index([time_slot_id])
 }
 
 model Attendance {
-  id            String    @id @default(cuid())
-  lecturer_id   String
-  room_id       String
-  check_in_at   DateTime  @default(now())
-  check_out_at  DateTime?
-  status        String
-  lecturer      Lecturer  @relation(fields: [lecturer_id], references: [id])
-  room          Room      @relation(fields: [room_id], references: [id])
+  id           String    @id @default(cuid())
+  lecturer_id  String
+  room_id      String
+  check_in_at  DateTime  @default(now())
+  check_out_at DateTime?
+  status       String
+  lecturer     Lecturer  @relation(fields: [lecturer_id], references: [id])
+  room         Room      @relation(fields: [room_id], references: [id])
 
   @@index([lecturer_id])
   @@index([room_id])
@@ -283,6 +301,3 @@ enum CourseSemester {
   SEMESTER_7
   SEMESTER_8
 }
-
-
-
