@@ -106,26 +106,11 @@ const checkRoomAccess = async (req, res, next) => {
   if (['DSN', 'DOSEN'].includes(roleIdentity)) {
     if (!user.lecturer) return error(res, 'Lecturer profile not found', 403)
 
-    const now = new Date()
-    const currentTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`
-    const days = [
-      'Minggu',
-      'Senin',
-      'Selasa',
-      'Rabu',
-      'Kamis',
-      'Jumat',
-      'Sabtu'
-    ]
-    const currentDay = days[now.getDay()]
-
     const activeSchedule = await prisma.schedule.findFirst({
       where: {
         lecturer_id: user.lecturer.id,
         room_id: room_id,
-        day: currentDay,
-        start_time: { lte: currentTime },
-        end_time: { gte: currentTime }
+        status: true
       }
     })
 

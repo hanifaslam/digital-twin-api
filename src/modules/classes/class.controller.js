@@ -146,19 +146,14 @@ const classController = {
           status: true,
           ...(study_program_id ? { study_program_id } : {})
         },
-        include: {
-          study_program: {
-            select: {
-              id: true,
-              name: true,
-              code: true
-            }
-          }
+        select: {
+          id: true,
+          name: true
         },
         orderBy: [{ study_program: { name: 'asc' } }, { name: 'asc' }]
       })
 
-      return success(res, 'success', classes.map(formatClass))
+      return success(res, 'success', classes)
     } catch (err) {
       return error(res, err.message, 500)
     }

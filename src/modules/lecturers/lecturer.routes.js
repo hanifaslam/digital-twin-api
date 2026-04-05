@@ -8,6 +8,7 @@ const {
 } = require('./lecturer.schema')
 
 router.post('/', validate(createLecturerSchema), lecturerController.create)
+router.get('/all', lecturerController.getAllActive)
 router.get('/', lecturerController.getAll)
 router.get('/:id', lecturerController.getById)
 router.patch('/:id', validate(updateLecturerSchema), lecturerController.update)
