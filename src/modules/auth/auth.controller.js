@@ -38,6 +38,92 @@ const ensureDashboardAccess = (modules, permissions, role) => {
   ]
 }
 
+const getUserScopes = async (user) => {
+  const roleIdentity = getRoleIdentity(user.role)
+
+  if (['SA', 'SUPER_ADMIN'].includes(roleIdentity)) {
+    const [studyPrograms, buildings] = await Promise.all([
+      prisma.studyProgram.findMany({
+        where: { status: true },
+        select: {
+          id: true,
+          name: true
+        },
+        orderBy: { name: 'asc' }
+      }),
+      prisma.building.findMany({
+        where: { status: true },
+        select: {
+          id: true,
+          name: true
+        },
+        orderBy: { name: 'asc' }
+      })
+    ])
+
+    return { study_programs: studyPrograms, buildings }
+  }
+
+  if (['DSN', 'DOSEN'].includes(roleIdentity)) {
+    const lecturer = await prisma.lecturer.findUnique({
+      where: { user_id: user.id },
+      select: {
+        study_programs: {
+          select: {
+            study_program: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        }
+      }
+    })
+
+    return {
+      study_programs:
+        lecturer?.study_programs.map((item) => ({
+          id: item.study_program.id,
+          name: item.study_program.name
+        })) || [],
+      buildings: []
+    }
+  }
+
+  if (['HLP', 'HELPER'].includes(roleIdentity)) {
+    const helper = await prisma.helper.findUnique({
+      where: { user_id: user.id },
+      select: {
+        buildings: {
+          select: {
+            building: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        }
+      }
+    })
+
+    return {
+      study_programs: [],
+      buildings:
+        helper?.buildings.map((item) => ({
+          id: item.building.id,
+          name: item.building.name
+        })) || []
+    }
+  }
+
+  return {
+    study_programs: [],
+    buildings: []
+  }
+}
+
 const generateTokens = (user) => {
   const accessToken = jwt.sign(
     { id: user.id, username: user.username, email: user.email },
@@ -192,6 +278,7 @@ const getMe = async (req, res) => {
       user.role.permissions,
       user.role
     )
+    const scopes = await getUserScopes(user)
 
     return success(res, 'success', {
       id: user.id,
@@ -200,6 +287,9 @@ const getMe = async (req, res) => {
       email: user.email,
       role_name: user.role.name,
       role_id: user.role_id,
+      role_code: user.role.code || null,
+      study_programs: scopes.study_programs,
+      buildings: scopes.buildings,
       access
     })
   } catch (err) {

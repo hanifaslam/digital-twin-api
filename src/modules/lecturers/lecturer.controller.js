@@ -112,6 +112,49 @@ const lecturerController = {
     }
   },
 
+  getAllActive: async (req, res) => {
+    try {
+      const { study_program_id } = req.query || {}
+
+      const where = {
+        ...(study_program_id
+          ? {
+              study_programs: {
+                some: { study_program_id }
+              }
+            }
+          : {})
+      }
+
+      const lecturers = await prisma.lecturer.findMany({
+        where,
+        select: {
+          id: true,
+          nip: true,
+          user: {
+            select: {
+              id: true,
+              name: true
+            }
+          }
+        },
+        orderBy: { user: { name: 'asc' } }
+      })
+
+      return success(
+        res,
+        'success',
+        lecturers.map((lecturer) => ({
+          id: lecturer.id,
+          nip: lecturer.nip,
+          name: lecturer.user?.name || null
+        }))
+      )
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
   getAll: async (req, res) => {
     try {
       const { q, study_program } = req.query || {}

@@ -207,10 +207,11 @@ model Schedule {
   id               String       @id @default(cuid())
   study_program_id String
   class_id         String
-  lecturer_id String
+  lecturer_id      String
   room_id          String
   course_id        String
   time_slot_id     String
+  day              Day
   status           Boolean      @default(true)
   created_at       DateTime     @default(now())
   updated_at       DateTime     @updatedAt
@@ -221,7 +222,7 @@ model Schedule {
   course           Course       @relation(fields: [course_id], references: [id])
   time_slot        TimeSlot     @relation(fields: [time_slot_id], references: [id])
 
-  @@unique([study_program_id, class_id, room_id, lecturer_id, course_id, time_slot_id])
+  @@unique([study_program_id, class_id, room_id, lecturer_id, course_id, time_slot_id, day])
   @@index([study_program_id])
   @@index([class_id])
   @@index([lecturer_id])
@@ -300,4 +301,14 @@ enum CourseSemester {
   SEMESTER_6
   SEMESTER_7
   SEMESTER_8
+}
+
+enum Day {
+  SUNDAY
+  MONDAY
+  TUESDAY
+  WEDNESDAY
+  THURSDAY
+  FRIDAY
+  SATURDAY
 }

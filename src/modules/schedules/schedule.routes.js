@@ -8,7 +8,9 @@ const {
 } = require('./schedule.schema')
 
 router.post('/', validate(createScheduleSchema), scheduleController.create)
+router.get('/days', scheduleController.getAllDays)
 router.get('/all', scheduleController.getAllActive)
+router.get('/grouped', scheduleController.getGrouped)
 router.get('/', scheduleController.getAll)
 router.get('/:id', scheduleController.getById)
 router.patch('/:id', validate(updateScheduleSchema), scheduleController.update)
