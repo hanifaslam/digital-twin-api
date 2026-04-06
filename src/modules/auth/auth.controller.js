@@ -11,22 +11,13 @@ const getRoleIdentity = (role = {}) =>
     .toUpperCase()
     .replace(/\s+/g, '_')
 
-const ensureDashboardAccess = (modules, permissions, role) => {
-  const hasDashboardPermission = permissions.some(
-    (rp) => rp?.permission?.name === 'DASHBOARD'
-  )
-  const roleIdentity = getRoleIdentity(role)
-  const isElevatedRole = ['SA', 'SUPER_ADMIN', 'HLP', 'HELPER'].includes(
-    roleIdentity
-  )
-
-  if (
-    modules.some((module) => module.code === 'dashboard') ||
-    (!hasDashboardPermission && !isElevatedRole)
-  ) {
+const ensureDashboardAccess = (modules) => {
+  // If dashboard is already present in modules from the database, return as is
+  if (modules.some((module) => module.code === 'dashboard')) {
     return modules
   }
 
+  // Otherwise, always add it as the primary module
   return [
     {
       id: 'dashboard',
