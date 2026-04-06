@@ -304,7 +304,6 @@ enum CourseSemester {
 }
 
 enum Day {
-  SUNDAY
   MONDAY
   TUESDAY
   WEDNESDAY
