@@ -1,0 +1,49 @@
+name: Deploy Face Service to Dokploy
+
+on:
+  push:
+    branches:
+      - staging
+    paths:
+      - 'face-service/**'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-face
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./face-service # Arahkan ke folder python
+          file: ./face-service/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}-face:latest
+            ghcr.io/${{ github.repository }}-face:${{ github.sha }}
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Dokploy Webhook
+        run: |
+          curl -X POST --retry 3 --retry-delay 5 "${{ secrets.DOKPLOY_FACE_WEBHOOK_URL }}" \
+          -H "Content-Type: application/json"

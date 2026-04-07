@@ -137,6 +137,8 @@ model Lecturer {
   study_programs   LecturerStudyProgram[]
   schedules        Schedule[]
   attendances      Attendance[]
+  is_available     Boolean               @default(false)
+  face_data        FaceData?
   created_at       DateTime              @default(now())
   updated_at       DateTime              @updatedAt
 }
@@ -301,6 +303,15 @@ enum CourseSemester {
   SEMESTER_6
   SEMESTER_7
   SEMESTER_8
+}
+
+model FaceData {
+  id          String   @id @default(cuid())
+  lecturer_id String   @unique
+  lecturer    Lecturer @relation(fields: [lecturer_id], references: [id], onDelete: Cascade)
+  embedding   Json
+  image_url   String
+  created_at  DateTime @default(now())
 }
 
 enum Day {

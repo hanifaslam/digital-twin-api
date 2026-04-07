@@ -42,6 +42,9 @@ app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser()) // PENTING: Untuk baca refresh token
 
+// Static files untuk uploaded face images
+app.use('/uploads', express.static(require('path').join(process.cwd(), 'uploads')))
+
 // Health check for CD with Dokploy
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() })
