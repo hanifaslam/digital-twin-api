@@ -32,7 +32,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./face-service # Arahkan ke folder python
+          context: ./face-service
           file: ./face-service/Dockerfile
           push: true
           tags: |
