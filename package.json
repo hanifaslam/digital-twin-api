@@ -11,6 +11,7 @@
     "format": "prettier --write ."
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1025.0",
     "@prisma/adapter-pg": "^7.4.2",
     "@prisma/client": "^7.4.2",
     "bcryptjs": "^3.0.3",
@@ -19,6 +20,7 @@
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
     "pg": "^8.19.0",
     "prisma": "^7.4.2",
     "redis": "^5.11.0",
