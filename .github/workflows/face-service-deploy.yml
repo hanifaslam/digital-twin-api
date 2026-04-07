@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}-face
+  IMAGE_NAME: face-service
 
 jobs:
   build-and-push:
@@ -36,8 +36,8 @@ jobs:
           file: ./face-service/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}-face:latest
-            ghcr.io/${{ github.repository }}-face:${{ github.sha }}
+            ghcr.io/${{ github.actor }}/face-service:latest
+            ghcr.io/${{ github.actor }}/face-service:${{ github.sha }}
 
   deploy:
     needs: build-and-push
