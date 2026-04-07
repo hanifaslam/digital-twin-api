@@ -44,3 +44,6 @@ async def get_embedding(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
     finally:
         os.unlink(tmp_path)
+
+
+#test
