@@ -46,4 +46,3 @@ async def get_embedding(file: UploadFile = File(...)):
         os.unlink(tmp_path)
 
 
-#test
