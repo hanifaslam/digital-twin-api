@@ -4,6 +4,7 @@ const { success, error } = require('../../config/response')
 const path = require('path')
 const s3 = require('../../config/s3')
 const { PutObjectCommand } = require('@aws-sdk/client-s3')
+const { getIO } = require('../../config/socket')
 
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL || 'http://localhost:8000'
 const SIMILARITY_THRESHOLD = parseFloat(
@@ -185,6 +186,17 @@ const faceRecognitionController = {
           last_auto_status: availableStatus ? 'AVAILABLE' : 'BUSY'
         }
       })
+
+      // Emit socket event so the dashboard Updates for everyone
+      try {
+        getIO().emit('lecturer-status-updated', {
+          id: updated.id,
+          status: updated.status,
+          is_manual: updated.is_manual
+        })
+      } catch (e) {
+        console.error('Socket Emit Error (Face Verification):', e.message)
+      }
 
       return success(res, 'Face verified', {
         lecturer_id: lecturerId,

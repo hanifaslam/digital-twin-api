@@ -2,6 +2,7 @@ const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const redisClient = require('../../config/redis')
 const { buildPagination } = require('../../utils/pagination')
+const { getIO } = require('../../config/socket')
 
 const normalizeStudyProgramIds = (studyProgramIds) => [
   ...new Set((studyProgramIds || []).map((id) => id?.trim()).filter(Boolean))
@@ -397,6 +398,17 @@ const lecturerController = {
           is_manual: true
         }
       })
+
+      // Emit socket event
+      try {
+        getIO().emit('lecturer-status-updated', {
+          id: updated.id,
+          status: updated.status,
+          is_manual: updated.is_manual
+        })
+      } catch (e) {
+        console.error('Socket Emit Error:', e.message)
+      }
 
       return success(res, `Status overridden to ${status} (Manual Mode)`, {
         id: updated.id,
