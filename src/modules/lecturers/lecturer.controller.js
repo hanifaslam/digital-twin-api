@@ -362,7 +362,6 @@ const lecturerController = {
       return error(res, err.message, 500)
     }
   },
-
   delete: async (req, res) => {
     try {
       const { id } = req.params
@@ -376,6 +375,34 @@ const lecturerController = {
         .catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  overrideStatus: async (req, res) => {
+    try {
+      const { status } = req.body
+      const lecturerId = req.user.lecturer?.id
+
+      if (!lecturerId) return error(res, 'Lecturer profile not found', 403)
+      if (!['AVAILABLE', 'BUSY', 'OFFLINE'].includes(status)) {
+        return error(res, 'Invalid status. Use AVAILABLE, BUSY, or OFFLINE', 400)
+      }
+
+      const updated = await prisma.lecturer.update({
+        where: { id: lecturerId },
+        data: {
+          status: status,
+          is_manual: true
+        }
+      })
+
+      return success(res, `Status overridden to ${status} (Manual Mode)`, {
+        id: updated.id,
+        status: updated.status,
+        is_manual: updated.is_manual
+      })
     } catch (err) {
       return error(res, err.message, 500)
     }

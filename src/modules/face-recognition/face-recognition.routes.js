@@ -17,7 +17,13 @@ const upload = multer({
   }
 })
 
-router.post('/register', upload.single('image'), faceRecognitionController.register)
+router.post(
+  '/register',
+  upload.single('image'),
+  faceRecognitionController.register
+)
 router.post('/verify', upload.single('image'), faceRecognitionController.verify)
+router.get('/status', faceRecognitionController.checkStatus)
+router.get('/status/:lecturer_id', faceRecognitionController.checkStatus)
 
 module.exports = router

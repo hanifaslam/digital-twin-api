@@ -12,6 +12,7 @@ router.get('/all', lecturerController.getAllActive)
 router.get('/', lecturerController.getAll)
 router.get('/:id', lecturerController.getById)
 router.patch('/:id', validate(updateLecturerSchema), lecturerController.update)
+router.patch('/status/override', lecturerController.overrideStatus)
 router.delete('/:id', lecturerController.delete)
 
 module.exports = router

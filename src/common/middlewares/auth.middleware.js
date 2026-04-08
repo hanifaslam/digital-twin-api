@@ -75,7 +75,14 @@ const authMiddleware = async (req, res, next) => {
     if (err.name === 'TokenExpiredError') {
       return error(res, 'Access token expired', 401)
     }
-    return error(res, 'Invalid token', 401)
+
+    return error(
+      res,
+      process.env.NODE_ENV === 'development'
+        ? `Invalid token: ${err.message}`
+        : 'Invalid token',
+      401
+    )
   }
 }
 
