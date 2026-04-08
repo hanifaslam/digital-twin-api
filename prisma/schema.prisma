@@ -137,7 +137,9 @@ model Lecturer {
   study_programs   LecturerStudyProgram[]
   schedules        Schedule[]
   attendances      Attendance[]
-  is_available     Boolean               @default(false)
+  is_manual        Boolean               @default(false)
+  status           String                @default("OFFLINE") // AVAILABLE, BUSY, OFFLINE
+  last_auto_status String?               // Cache untuk deteksi transisi jadwal
   face_data        FaceData?
   created_at       DateTime              @default(now())
   updated_at       DateTime              @updatedAt
