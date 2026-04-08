@@ -44,7 +44,10 @@ app.use(express.urlencoded({ extended: true }))
 app.use(cookieParser()) // PENTING: Untuk baca refresh token
 
 // Static files untuk uploaded face images
-app.use('/uploads', express.static(require('path').join(process.cwd(), 'uploads')))
+app.use(
+  '/uploads',
+  express.static(require('path').join(process.cwd(), 'uploads'))
+)
 
 // Health check for CD with Dokploy
 app.get('/health', (req, res) => {
@@ -74,7 +77,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000
 const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`)
-  
+
   // Start the background jobs
   startLecturerStatusJob()
 })
