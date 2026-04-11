@@ -7,6 +7,8 @@ const { error } = require('./config/response')
 const startLecturerStatusJob = require('./common/jobs/lecturer-status.job')
 const prisma = require('./config/prisma')
 const redisClient = require('./config/redis')
+const { initSocket } = require('./config/socket')
+const { initMQTT } = require('./config/mqtt')
 
 const app = express()
 app.set('trust proxy', 1)
@@ -77,6 +79,12 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000
 const server = app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`)
+
+  // Initialize Socket.io
+  initSocket(server)
+
+  // Initialize MQTT
+  initMQTT()
 
   // Start the background jobs
   startLecturerStatusJob()

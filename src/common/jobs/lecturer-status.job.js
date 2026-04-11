@@ -1,31 +1,36 @@
 const cron = require('node-cron')
+const { Day } = require('@prisma/client')
 const prisma = require('../../config/prisma')
+const { getIO } = require('../../config/socket')
+const { getJakartaTime } = require('../../utils/date')
 
 const syncLecturerAvailability = async () => {
   console.log('[Cron] Checking lecturer status & schedule transitions...')
   try {
     const now = new Date()
-    const days = [
-      'SUNDAY',
-      'MONDAY',
-      'TUESDAY',
-      'WEDNESDAY',
-      'THURSDAY',
-      'FRIDAY',
-      'SATURDAY'
-    ]
-    const currentDay = days[now.getDay()]
+    const daysMap = {
+      1: Day.MONDAY,
+      2: Day.TUESDAY,
+      3: Day.WEDNESDAY,
+      4: Day.THURSDAY,
+      5: Day.FRIDAY
+    }
+    const currentDay = daysMap[now.getDay()]
+    const { hours, minutes } = getJakartaTime(now)
     const currentTime =
-      now.getHours().toString().padStart(2, '0') +
+      hours.toString().padStart(2, '0') +
       ':' +
-      now.getMinutes().toString().padStart(2, '0')
+      minutes.toString().padStart(2, '0')
 
     // Ambil semua dosen yang sedang standby (punya FaceData)
     const lecturers = await prisma.lecturer.findMany({
       where: { face_data: { isNot: null } },
       include: {
         schedules: {
-          where: { day: currentDay, status: true },
+          where: { 
+            day: currentDay || undefined, // Jika weekend (null), jangan filter berdasarkan hari ini (atau skip)
+            status: true 
+          },
           include: { time_slot: true }
         }
       }
@@ -80,9 +85,22 @@ const syncLecturerAvailability = async () => {
           data: {
             status: finalStatus,
             is_manual: finalIsManual,
+            overridden_at: finalIsManual ? lecturer.overridden_at : null,
             last_auto_status: expectedAutoStatus
           }
         })
+
+        // Emit socket event for real-time update
+        try {
+          getIO().emit('lecturer-status-updated', {
+            id: lecturer.id,
+            status: finalStatus,
+            is_manual: finalIsManual
+          })
+        } catch (e) {
+          // Socket might not be initialized yet if cron runs during startup
+          console.error('Socket Emit Error (Cron):', e.message)
+        }
       }
     }
   } catch (error) {

@@ -59,6 +59,8 @@ const getUserScopes = async (user) => {
     const lecturer = await prisma.lecturer.findUnique({
       where: { user_id: user.id },
       select: {
+        id: true,
+        nip: true,
         study_programs: {
           select: {
             study_program: {
@@ -73,6 +75,8 @@ const getUserScopes = async (user) => {
     })
 
     return {
+      id: lecturer?.id || null,
+      nip: lecturer?.nip || null,
       study_programs:
         lecturer?.study_programs.map((item) => ({
           id: item.study_program.id,
@@ -176,13 +180,15 @@ const login = async (req, res) => {
       ...(remember_me && { maxAge: 7 * 24 * 60 * 60 * 1000 })
     })
 
+    const scopes = await getUserScopes(user)
     return success(res, 'success', {
       id: user.id,
       name: user.name,
       username: user.username,
       email: user.email,
       role_name: user.role.name,
-      role_id: user.role_id
+      role_id: user.role_id,
+      lecturer_id: scopes.id || null
     })
   } catch (err) {
     console.error(err)
@@ -279,6 +285,8 @@ const getMe = async (req, res) => {
       role_name: user.role.name,
       role_id: user.role_id,
       role_code: user.role.code || null,
+      lecturer_id: scopes.id || null,
+      nip: scopes.nip || null,
       study_programs: scopes.study_programs,
       buildings: scopes.buildings,
       access
