@@ -3,7 +3,7 @@ const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const path = require('path')
 const s3 = require('../../config/s3')
-const { PutObjectCommand } = require('@aws-sdk/client-s3')
+const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3')
 const { getIO } = require('../../config/socket')
 const { formatTime, getJakartaTime } = require('../../utils/date')
 
@@ -152,12 +152,11 @@ const faceRecognitionController = {
 
       let activeSchedule = null
       if (currentDay) {
-        // Cari jadwal dosen di hari ini
         activeSchedule = await prisma.schedule.findFirst({
           where: {
             lecturer_id: lecturerId,
             day: currentDay,
-            status: true // Hanya jadwal yang aktif
+            status: true
           },
           include: {
             time_slot: true
@@ -166,7 +165,7 @@ const faceRecognitionController = {
       }
 
       const isWeekend = dayIndex === 0 || dayIndex === 6
-      let availableStatus = !isWeekend
+      // let availableStatus = !isWeekend
       //?? FOR TESTING: Forced to true
       availableStatus = true
 
@@ -265,7 +264,7 @@ const faceRecognitionController = {
 
       // Logic for On Time & Late Minutes (Threshold 07:30) - Timezone Aware (WIB)
       let isOnTime = false
-      let lateMinutes = 0
+      let lateMinutes = null
       if (attendance) {
         const { hours, minutes } = getJakartaTime(attendance.check_in_at)
 
@@ -276,8 +275,8 @@ const faceRecognitionController = {
         lateMinutes = Math.max(0, totalMinutes - deadlineMinutes)
       }
 
-      //? For development purposes, we allow verification anytime
-      const canVerify = true
+      //? For development purposes, we allow verification anytime as long as registered
+      const canVerify = !!faceData
 
       return success(res, 'success', {
         registered: !!faceData,
@@ -297,6 +296,88 @@ const faceRecognitionController = {
       })
     } catch (err) {
       console.error('Check Status Error:', err)
+      return error(res, err.message, 500)
+    }
+  },
+
+  unregister: async (req, res) => {
+    try {
+      const user = req.user
+      const roleIdentity = user.role?.code?.toUpperCase()
+
+      // Ambil lecturer_id (Bisa kirim manual jika SA, atau ambil dari profile sendiri)
+      const lecturerId =
+        roleIdentity === 'SUPER_ADMIN' || roleIdentity === 'SA'
+          ? req.body.lecturer_id || user.lecturer?.id
+          : user.lecturer?.id
+
+      if (!lecturerId) return error(res, 'Lecturer profile not found', 403)
+
+      const faceData = await prisma.faceData.findUnique({
+        where: { lecturer_id: lecturerId }
+      })
+
+      if (!faceData) return error(res, 'Face ID not registered', 404)
+
+      // 1. Hapus dari S3 jika ada image_url
+      if (faceData.image_url) {
+        try {
+          const urlParts = faceData.image_url.split('/')
+          const filename = urlParts.slice(-2).join('/') // Mengambil 'faces/filename.ext'
+
+          await s3.send(
+            new DeleteObjectCommand({
+              Bucket: S3_BUCKET,
+              Key: filename
+            })
+          )
+        } catch (s3Err) {
+          console.error('S3 Delete Warning:', s3Err.message)
+          // Lanjut saja, s3 cleanup bisa gagal tanpa mematikan proses DB
+        }
+      }
+
+      // 2. Hapus dari database
+      await prisma.faceData.delete({
+        where: { lecturer_id: lecturerId }
+      })
+
+      return success(res, 'success')
+    } catch (err) {
+      console.error('Unregister Error:', err)
+      return error(res, err.message, 500)
+    }
+  },
+
+  deleteTodayAttendance: async (req, res) => {
+    try {
+      const lecturerId = req.user.lecturer?.id
+      if (!lecturerId) return error(res, 'Lecturer profile not found', 403)
+
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      // 1. Hapus record absensi hari ini
+      await prisma.attendance.deleteMany({
+        where: {
+          lecturer_id: lecturerId,
+          check_in_at: { gte: today }
+        }
+      })
+
+      // 2. Reset status dosen
+      await prisma.lecturer.update({
+        where: { id: lecturerId },
+        data: {
+          status: 'OFFLINE',
+          is_manual: false,
+          overridden_at: null
+        }
+      })
+
+      return success(res, 'success')
+    } catch (err) {
+      console.error('Reset Attendance Error:', err)
       return error(res, err.message, 500)
     }
   }

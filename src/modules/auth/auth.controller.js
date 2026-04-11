@@ -59,6 +59,7 @@ const getUserScopes = async (user) => {
     const lecturer = await prisma.lecturer.findUnique({
       where: { user_id: user.id },
       select: {
+        nip: true,
         study_programs: {
           select: {
             study_program: {
@@ -73,6 +74,7 @@ const getUserScopes = async (user) => {
     })
 
     return {
+      nip: lecturer?.nip || null,
       study_programs:
         lecturer?.study_programs.map((item) => ({
           id: item.study_program.id,
@@ -279,6 +281,7 @@ const getMe = async (req, res) => {
       role_name: user.role.name,
       role_id: user.role_id,
       role_code: user.role.code || null,
+      nip: scopes.nip || null,
       study_programs: scopes.study_programs,
       buildings: scopes.buildings,
       access

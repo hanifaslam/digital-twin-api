@@ -25,5 +25,7 @@ router.post(
 router.post('/verify', upload.single('image'), faceRecognitionController.verify)
 router.get('/status', faceRecognitionController.checkStatus)
 router.get('/status/:lecturer_id', faceRecognitionController.checkStatus)
+router.delete('/unregister', faceRecognitionController.unregister)
+router.delete('/attendance/today', faceRecognitionController.deleteTodayAttendance)
 
 module.exports = router
