@@ -388,18 +388,22 @@ const lecturerController = {
 
       if (!lecturerId) return error(res, 'Lecturer profile not found', 403)
       if (!['AVAILABLE', 'BUSY', 'OFFLINE'].includes(status)) {
-        return error(res, 'Invalid status. Use AVAILABLE, BUSY, or OFFLINE', 400)
+        return error(
+          res,
+          'Invalid status. Use AVAILABLE, BUSY, or OFFLINE',
+          400
+        )
       }
 
       const updated = await prisma.lecturer.update({
         where: { id: lecturerId },
         data: {
           status: status,
-          is_manual: true
+          is_manual: true,
+          overridden_at: new Date()
         }
       })
 
-      // Emit socket event
       try {
         getIO().emit('lecturer-status-updated', {
           id: updated.id,
@@ -410,11 +414,7 @@ const lecturerController = {
         console.error('Socket Emit Error:', e.message)
       }
 
-      return success(res, `Status overridden to ${status} (Manual Mode)`, {
-        id: updated.id,
-        status: updated.status,
-        is_manual: updated.is_manual
-      })
+      return success(res, `success`, null)
     } catch (err) {
       return error(res, err.message, 500)
     }

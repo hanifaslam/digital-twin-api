@@ -2,6 +2,7 @@ const cron = require('node-cron')
 const { Day } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 const { getIO } = require('../../config/socket')
+const { getJakartaTime } = require('../../utils/date')
 
 const syncLecturerAvailability = async () => {
   console.log('[Cron] Checking lecturer status & schedule transitions...')
@@ -15,10 +16,11 @@ const syncLecturerAvailability = async () => {
       5: Day.FRIDAY
     }
     const currentDay = daysMap[now.getDay()]
+    const { hours, minutes } = getJakartaTime(now)
     const currentTime =
-      now.getHours().toString().padStart(2, '0') +
+      hours.toString().padStart(2, '0') +
       ':' +
-      now.getMinutes().toString().padStart(2, '0')
+      minutes.toString().padStart(2, '0')
 
     // Ambil semua dosen yang sedang standby (punya FaceData)
     const lecturers = await prisma.lecturer.findMany({
@@ -83,6 +85,7 @@ const syncLecturerAvailability = async () => {
           data: {
             status: finalStatus,
             is_manual: finalIsManual,
+            overridden_at: finalIsManual ? lecturer.overridden_at : null,
             last_auto_status: expectedAutoStatus
           }
         })

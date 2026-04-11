@@ -5,6 +5,7 @@ const path = require('path')
 const s3 = require('../../config/s3')
 const { PutObjectCommand } = require('@aws-sdk/client-s3')
 const { getIO } = require('../../config/socket')
+const { formatTime, getJakartaTime } = require('../../utils/date')
 
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL || 'http://localhost:8000'
 const SIMILARITY_THRESHOLD = parseFloat(
@@ -86,7 +87,7 @@ const faceRecognitionController = {
 
       return success(
         res,
-        'Face registered successfully',
+        'success',
         { lecturer_id: lecturerId, image_url: imageUrl },
         201
       )
@@ -106,8 +107,8 @@ const faceRecognitionController = {
 
       const lecturerId =
         roleIdentity === 'SUPER_ADMIN' || roleIdentity === 'SA'
-          ? req.body.lecturer_id || user.lecturer?.id
-          : user.lecturer?.id
+          ? req.body?.lecturer_id || user?.lecturer?.id
+          : user?.lecturer?.id
 
       if (!lecturerId) return error(res, 'Lecturer profile not found', 403)
       if (!file) return error(res, 'Image is required', 400)
@@ -115,7 +116,7 @@ const faceRecognitionController = {
       const faceData = await prisma.faceData.findUnique({
         where: { lecturer_id: lecturerId },
         include: {
-          lecturer: { select: { id: true, is_available: true } }
+          lecturer: { select: { id: true, status: true } }
         }
       })
 
@@ -147,10 +148,7 @@ const faceRecognitionController = {
         5: Day.FRIDAY
       }
       const currentDay = dayMap[dayIndex]
-      const currentTime =
-        now.getHours().toString().padStart(2, '0') +
-        ':' +
-        now.getMinutes().toString().padStart(2, '0')
+      const currentTime = formatTime(now)
 
       let activeSchedule = null
       if (currentDay) {
@@ -169,6 +167,8 @@ const faceRecognitionController = {
 
       const isWeekend = dayIndex === 0 || dayIndex === 6
       let availableStatus = !isWeekend
+      //?? FOR TESTING: Forced to true
+      availableStatus = true
 
       if (activeSchedule) {
         const { start_time, end_time } = activeSchedule.time_slot
@@ -183,9 +183,20 @@ const faceRecognitionController = {
         data: {
           status: availableStatus ? 'AVAILABLE' : 'BUSY',
           is_manual: false,
+          overridden_at: null,
           last_auto_status: availableStatus ? 'AVAILABLE' : 'BUSY'
         }
       })
+
+      try {
+        await prisma.attendance.create({
+          data: {
+            lecturer_id: lecturerId
+          }
+        })
+      } catch (e) {
+        console.error('Attendance Logging Error:', e.message)
+      }
 
       // Emit socket event so the dashboard Updates for everyone
       try {
@@ -201,11 +212,7 @@ const faceRecognitionController = {
       return success(res, 'Face verified', {
         lecturer_id: lecturerId,
         status: updated.status,
-        status_note: availableStatus
-          ? 'Available for consultation'
-          : 'Busy teaching',
-        similarity: parseFloat(similarity.toFixed(4)),
-        method: '1:1 Self Verification'
+        similarity: parseFloat(similarity.toFixed(4))
       })
     } catch (err) {
       if (err.message.includes('Face not detected'))
@@ -223,18 +230,70 @@ const faceRecognitionController = {
 
       const faceData = await prisma.faceData.findUnique({
         where: { lecturer_id: lecturerId },
-        select: {
-          image_url: true,
-          created_at: true
+        include: {
+          lecturer: {
+            select: { status: true, is_manual: true, overridden_at: true }
+          }
         }
       })
 
-      return success(res, 'Face status retrieved', {
+      const now = new Date()
+      const dayIndex = now.getDay()
+      const hour = now.getHours()
+
+      const isWeekend = dayIndex === 0 || dayIndex === 6
+      const timeAllowed = hour >= 7
+
+      // Check if already attended today
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      const attendance = await prisma.attendance.findFirst({
+        where: {
+          lecturer_id: lecturerId,
+          check_in_at: {
+            gte: today
+          }
+        },
+        orderBy: {
+          check_in_at: 'desc'
+        }
+      })
+
+      const isAttended = !!attendance
+      const attendedAtTime = formatTime(attendance?.check_in_at)
+
+      // Logic for On Time & Late Minutes (Threshold 07:30) - Timezone Aware (WIB)
+      let isOnTime = false
+      let lateMinutes = 0
+      if (attendance) {
+        const { hours, minutes } = getJakartaTime(attendance.check_in_at)
+
+        const totalMinutes = hours * 60 + minutes
+        const deadlineMinutes = 7 * 60 + 30 // 07:30
+
+        isOnTime = totalMinutes <= deadlineMinutes
+        lateMinutes = Math.max(0, totalMinutes - deadlineMinutes)
+      }
+
+      //? For development purposes, we allow verification anytime
+      const canVerify = true
+
+      return success(res, 'success', {
         registered: !!faceData,
         status: faceData?.lecturer?.status || 'OFFLINE',
         is_manual: faceData?.lecturer?.is_manual || false,
-        image_url: faceData?.image_url || null,
-        registered_at: faceData?.created_at || null
+        attended_at: attendedAtTime,
+        is_on_time: isOnTime,
+        late_minutes: lateMinutes,
+        overridden_at: formatTime(faceData?.lecturer?.overridden_at),
+        can_verify: canVerify,
+        can_override: isAttended,
+        details: {
+          is_weekend: isWeekend,
+          time_allowed: timeAllowed,
+          is_attended: isAttended
+        }
       })
     } catch (err) {
       console.error('Check Status Error:', err)

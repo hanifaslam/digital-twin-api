@@ -71,7 +71,6 @@ model Room {
   floor         Floor          @relation(fields: [floor_id], references: [id])
   status        Boolean        @default(true)
   schedules     Schedule[]
-  attendances   Attendance[]
   device_status DeviceStatus?
   sensor_logs   SensorLog[]
   devices       Device[]
@@ -138,6 +137,7 @@ model Lecturer {
   schedules        Schedule[]
   attendances      Attendance[]
   is_manual        Boolean               @default(false)
+  overridden_at    DateTime?
   status           String                @default("OFFLINE") // AVAILABLE, BUSY, OFFLINE
   last_auto_status String?               // Cache untuk deteksi transisi jadwal
   face_data        FaceData?
@@ -238,15 +238,10 @@ model Schedule {
 model Attendance {
   id           String    @id @default(cuid())
   lecturer_id  String
-  room_id      String
   check_in_at  DateTime  @default(now())
-  check_out_at DateTime?
-  status       String
   lecturer     Lecturer  @relation(fields: [lecturer_id], references: [id])
-  room         Room      @relation(fields: [room_id], references: [id])
 
   @@index([lecturer_id])
-  @@index([room_id])
   @@index([check_in_at])
 }
 
