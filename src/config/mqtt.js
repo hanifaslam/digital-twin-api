@@ -8,7 +8,7 @@ const initMQTT = () => {
   if (client) return client
 
   const options = {
-    clientId: process.env.MQTT_CLIENT_ID || `digital_twin_api_${Math.random().toString(16).substring(2, 8)}`,
+    clientId: `${process.env.MQTT_CLIENT_ID || 'digital_twin_api'}_${Math.random().toString(16).substring(2, 8)}`,
     username: process.env.MQTT_USERNAME || undefined,
     password: process.env.MQTT_PASSWORD || undefined,
     clean: true,
