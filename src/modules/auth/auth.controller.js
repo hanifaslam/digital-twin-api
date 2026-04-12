@@ -67,26 +67,25 @@ const getUserScopes = async (user) => {
   }
 
   if (['DSN', 'DOSEN'].includes(roleIdentity)) {
-    const lecturer =
-      user.lecturer?.study_programs
-        ? user.lecturer
-        : await prisma.lecturer.findUnique({
-            where: { user_id: user.id },
-            select: {
-              id: true,
-              nip: true,
-              study_programs: {
-                select: {
-                  study_program: {
-                    select: {
-                      id: true,
-                      name: true
-                    }
+    const lecturer = user.lecturer?.study_programs
+      ? user.lecturer
+      : await prisma.lecturer.findUnique({
+          where: { user_id: user.id },
+          select: {
+            id: true,
+            nip: true,
+            study_programs: {
+              select: {
+                study_program: {
+                  select: {
+                    id: true,
+                    name: true
                   }
                 }
               }
             }
-          })
+          }
+        })
 
     return {
       id: lecturer?.id || null,
@@ -100,25 +99,24 @@ const getUserScopes = async (user) => {
     }
   }
 
-  if (['HLP', 'HELPER'].includes(roleIdentity)) {
-    const helper =
-      user.helper?.buildings
-        ? user.helper
-        : await prisma.helper.findUnique({
-            where: { user_id: user.id },
-            select: {
-              buildings: {
-                select: {
-                  building: {
-                    select: {
-                      id: true,
-                      name: true
-                    }
+  if (['HLP', 'HELPER', 'HP'].includes(roleIdentity)) {
+    const helper = user.helper?.buildings
+      ? user.helper
+      : await prisma.helper.findUnique({
+          where: { user_id: user.id },
+          select: {
+            buildings: {
+              select: {
+                building: {
+                  select: {
+                    id: true,
+                    name: true
                   }
                 }
               }
             }
-          })
+          }
+        })
 
     return {
       study_programs: [],
@@ -170,7 +168,8 @@ const login = async (req, res) => {
             }
           }
         },
-        lecturer: true
+        lecturer: true,
+        helper: true
       }
     })
 
@@ -289,13 +288,13 @@ const getMe = async (req, res) => {
 
       return Object.values(modules)
         .map((m) => {
-          const isDashboard = m.code.toLowerCase() === 'dashboard'
-          const hasSinglePermission = m.children.length === 1
+          const firstChild = m.children[0]
 
-          if (isDashboard || hasSinglePermission) {
-            const p = m.children[0]
+          const shouldCollapse = m.is_group === false
+
+          if (shouldCollapse) {
             return {
-              id: p ? p.id : m.id,
+              id: firstChild ? firstChild.id : m.id,
               name: m.name,
               code: m.code,
               sequence: m.sequence || 0,

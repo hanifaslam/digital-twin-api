@@ -50,7 +50,8 @@ const authMiddleware = async (req, res, next) => {
               }
             }
           },
-          lecturer: true
+          lecturer: true,
+          helper: true
         }
       })
 
@@ -106,7 +107,7 @@ const checkRoomAccess = async (req, res, next) => {
   const user = req.user
   const roleIdentity = getRoleIdentity(user.role)
 
-  if (['SA', 'SUPER_ADMIN', 'HLP', 'HELPER'].includes(roleIdentity)) {
+  if (['SA', 'SUPER_ADMIN', 'HELPER', 'HP'].includes(roleIdentity)) {
     return next()
   }
 
