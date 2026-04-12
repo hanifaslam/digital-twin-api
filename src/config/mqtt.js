@@ -47,6 +47,19 @@ const initMQTT = () => {
             where: { id: device.id },
             data: { is_on: isOn }
           })
+          
+          // Emit real-time update via Socket.io
+          try {
+            const { getIO } = require('./socket')
+            getIO().emit('device-status', { 
+              device_id: device.id, 
+              name: device.name,
+              is_on: isOn 
+            })
+          } catch (ioError) {
+            // Silently fail if socket is not initialized
+          }
+
           console.log(`[MQTT] Device '${device.name}' state updated to: ${isOn}`)
         }
       }
@@ -64,17 +77,34 @@ const initMQTT = () => {
 
         if (device) {
           const data = JSON.parse(message.toString())
-          const { voltage, current, power, energy } = data
+          const { voltage, current, power, energy, frequency, power_factor } = data
+
+          const sensorData = {
+            room_id: device.room_id,
+            voltage: voltage ? parseFloat(voltage) : null,
+            current: current ? parseFloat(current) : null,
+            power: power ? parseFloat(power) : null,
+            energy: energy ? parseFloat(energy) : null,
+            frequency: frequency ? parseFloat(frequency) : null,
+            power_factor: power_factor ? parseFloat(power_factor) : null
+          }
 
           await prisma.sensorLog.create({
-            data: {
-              room_id: device.room_id,
-              voltage: voltage ? parseFloat(voltage) : null,
-              current: current ? parseFloat(current) : null,
-              power: power ? parseFloat(power) : null,
-              energy: energy ? parseFloat(energy) : null
-            }
+            data: sensorData
           })
+
+          // Emit real-time update via Socket.io
+          try {
+            const { getIO } = require('./socket')
+            getIO().emit('sensor-data', {
+              ...sensorData,
+              device_name: device.name,
+              timestamp: new Date()
+            })
+          } catch (ioError) {
+            // Silently fail if socket is not initialized
+          }
+
           console.log(`[MQTT] Sensor data saved for room of device '${device.name}'`)
         }
       }
