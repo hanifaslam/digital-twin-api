@@ -1,4 +1,6 @@
 const mqtt = require('mqtt')
+const prisma = require('./prisma')
+const { getIO } = require('./socket')
 
 let client = null
 
@@ -35,8 +37,6 @@ const initMQTT = () => {
         const baseTopic = topic.replace('/status', '')
         const isOn = payload === 'true' || payload === '1' || payload === 'on'
 
-        const prisma = require('./prisma') // Lazy load prisma
-        
         // Find device by its configured mqtt_topic
         const device = await prisma.device.findFirst({
           where: { mqtt_topic: baseTopic }
@@ -50,7 +50,6 @@ const initMQTT = () => {
           
           // Emit real-time update via Socket.io
           try {
-            const { getIO } = require('./socket')
             getIO().emit('device-status', { 
               device_id: device.id, 
               name: device.name,
@@ -67,7 +66,6 @@ const initMQTT = () => {
       // Handler untuk data sensor PZEM (topic berakhiran /data)
       if (topic.endsWith('/data')) {
         const baseTopic = topic.replace('/data', '')
-        const prisma = require('./prisma')
         
         // Cari device untuk dapetin room_id
         const device = await prisma.device.findFirst({
@@ -95,7 +93,6 @@ const initMQTT = () => {
 
           // Emit real-time update via Socket.io
           try {
-            const { getIO } = require('./socket')
             getIO().emit('sensor-data', {
               ...sensorData,
               device_name: device.name,
@@ -152,3 +149,4 @@ const publish = (topic, message) => {
 }
 
 module.exports = { initMQTT, getMQTTClient, publish }
+
