@@ -223,6 +223,11 @@ const deviceController = {
         updated_at: updatedDevice.updated_at
       }
 
+      // Publish to MQTT if status was updated and topic exists
+      if (status !== undefined && updatedDevice.mqtt_topic) {
+        publish(updatedDevice.mqtt_topic, updatedDevice.status ? 'true' : 'false')
+      }
+
       return success(res, 'success', result)
     } catch (err) {
       return error(res, err.message, 500)
@@ -259,6 +264,11 @@ const deviceController = {
         where: { id },
         data: { status: newStatus }
       })
+
+      // Publish to MQTT if topic exists
+      if (device.mqtt_topic) {
+        publish(device.mqtt_topic, newStatus ? 'true' : 'false')
+      }
 
       return success(res, 'success', null)
     } catch (err) {
