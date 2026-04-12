@@ -280,6 +280,7 @@ model Device {
   mqtt_topic String?
   stream_url String?
   status     Boolean    @default(true)
+  is_on      Boolean    @default(false)
   created_at DateTime   @default(now())
   updated_at DateTime   @updatedAt
 
@@ -288,7 +289,7 @@ model Device {
 
 enum DeviceType {
   AC
-  LAMP
+  LIGHT
   CCTV
 }
 

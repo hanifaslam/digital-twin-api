@@ -20,6 +20,39 @@ const initMQTT = () => {
 
   client.on('connect', () => {
     console.log('--- MQTT Connected ---')
+    // Subscribe to all topics to catch status updates from any custom topic structure
+    client.subscribe('#', { qos: 1 }, (err) => {
+      if (!err) console.log('MQTT Subscribed to all topics (#)')
+    })
+  })
+
+  client.on('message', async (topic, message) => {
+    try {
+      const payload = message.toString().toLowerCase()
+      
+      // Expected pattern: any/custom/topic/status
+      if (topic.endsWith('/status')) {
+        const baseTopic = topic.replace('/status', '')
+        const isOn = payload === 'true' || payload === '1' || payload === 'on'
+
+        const prisma = require('./prisma') // Lazy load prisma
+        
+        // Find device by its configured mqtt_topic
+        const device = await prisma.device.findFirst({
+          where: { mqtt_topic: baseTopic }
+        })
+
+        if (device) {
+          await prisma.device.update({
+            where: { id: device.id },
+            data: { is_on: isOn }
+          })
+          console.log(`[MQTT] Device '${device.name}' state updated to: ${isOn}`)
+        }
+      }
+    } catch (error) {
+      console.error('[MQTT] Message Handler Error:', error.message)
+    }
   })
 
   client.on('error', (err) => {
