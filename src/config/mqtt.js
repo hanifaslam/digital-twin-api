@@ -39,10 +39,14 @@ const initMQTT = () => {
 
         // Find device by its configured mqtt_topic
         const device = await prisma.device.findFirst({
-          where: { mqtt_topic: baseTopic }
+          where: { mqtt_topic: baseTopic },
+          select: { id: true, name: true, is_on: true }
         })
 
         if (device) {
+          // Skip if status is the same to avoid unnecessary DB updates and socket emissions
+          if (device.is_on === isOn) return
+
           await prisma.device.update({
             where: { id: device.id },
             data: { is_on: isOn }

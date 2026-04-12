@@ -107,6 +107,7 @@ const deviceController = {
         id: device.id,
         name: device.name,
         type: device.type,
+        room_id: device.room_id,
         room_name: device.room?.name,
         status: device.status,
         is_on: device.is_on,
