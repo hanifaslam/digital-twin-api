@@ -6,6 +6,7 @@ const routes = require('./routes')
 const { error } = require('./config/response')
 const startLecturerStatusJob = require('./common/jobs/lecturer-status.job')
 const { initSensorCleanupJob } = require('./common/jobs/sensor-cleanup.job')
+const initDeviceAutoControlJob = require('./common/jobs/device-auto-control.job')
 const prisma = require('./config/prisma')
 const redisClient = require('./config/redis')
 const { initSocket } = require('./config/socket')
@@ -90,6 +91,7 @@ const server = app.listen(PORT, () => {
   // Start the background jobs
   startLecturerStatusJob()
   initSensorCleanupJob()
+  initDeviceAutoControlJob()
 })
 
 module.exports = app

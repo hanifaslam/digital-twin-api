@@ -23,7 +23,18 @@ const withDeactivationFlag = (room) => {
 const roomController = {
   getAllRooms: async (req, res) => {
     try {
+      const { building_id } = req.query || {}
+
+      let where = {
+        status: true
+      }
+
+      if (building_id) {
+        where.building_id = building_id
+      }
+
       const rooms = await prisma.room.findMany({
+        where,
         select: {
           id: true,
           name: true
