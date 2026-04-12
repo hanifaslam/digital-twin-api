@@ -33,7 +33,7 @@ const getUserScopes = async (user) => {
   const roleIdentity = getRoleIdentity(user.role)
 
   if (['SA', 'SUPER_ADMIN'].includes(roleIdentity)) {
-    const [studyPrograms, buildings] = await Promise.all([
+    const [studyPrograms, buildings, lecturer] = await Promise.all([
       prisma.studyProgram.findMany({
         where: { status: true },
         select: {
@@ -49,30 +49,43 @@ const getUserScopes = async (user) => {
           name: true
         },
         orderBy: { name: 'asc' }
-      })
+      }),
+      user.lecturer
+        ? Promise.resolve(user.lecturer)
+        : prisma.lecturer.findUnique({
+            where: { user_id: user.id },
+            select: { id: true, nip: true }
+          })
     ])
 
-    return { study_programs: studyPrograms, buildings }
+    return {
+      id: lecturer?.id || null,
+      nip: lecturer?.nip || null,
+      study_programs: studyPrograms,
+      buildings
+    }
   }
 
   if (['DSN', 'DOSEN'].includes(roleIdentity)) {
-    const lecturer = await prisma.lecturer.findUnique({
-      where: { user_id: user.id },
-      select: {
-        id: true,
-        nip: true,
-        study_programs: {
-          select: {
-            study_program: {
-              select: {
-                id: true,
-                name: true
+    const lecturer =
+      user.lecturer ||
+      (await prisma.lecturer.findUnique({
+        where: { user_id: user.id },
+        select: {
+          id: true,
+          nip: true,
+          study_programs: {
+            select: {
+              study_program: {
+                select: {
+                  id: true,
+                  name: true
+                }
               }
             }
           }
         }
-      }
-    })
+      }))
 
     return {
       id: lecturer?.id || null,
@@ -152,7 +165,8 @@ const login = async (req, res) => {
               }
             }
           }
-        }
+        },
+        lecturer: true
       }
     })
 
@@ -188,7 +202,9 @@ const login = async (req, res) => {
       email: user.email,
       role_name: user.role.name,
       role_id: user.role_id,
-      lecturer_id: scopes.id || null
+      role_code: user.role.code || null,
+      lecturer_id: scopes.id || null,
+      nip: scopes.nip || null
     })
   } catch (err) {
     console.error(err)
