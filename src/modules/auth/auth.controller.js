@@ -33,7 +33,7 @@ const getUserScopes = async (user) => {
   const roleIdentity = getRoleIdentity(user.role)
 
   if (['SA', 'SUPER_ADMIN'].includes(roleIdentity)) {
-    const [studyPrograms, buildings] = await Promise.all([
+    const [studyPrograms, buildings, lecturer] = await Promise.all([
       prisma.studyProgram.findMany({
         where: { status: true },
         select: {
@@ -49,36 +49,49 @@ const getUserScopes = async (user) => {
           name: true
         },
         orderBy: { name: 'asc' }
-      })
+      }),
+      user.lecturer
+        ? Promise.resolve(user.lecturer)
+        : prisma.lecturer.findUnique({
+            where: { user_id: user.id },
+            select: { id: true, nip: true }
+          })
     ])
 
-    return { study_programs: studyPrograms, buildings }
+    return {
+      id: lecturer?.id || null,
+      nip: lecturer?.nip || null,
+      study_programs: studyPrograms,
+      buildings
+    }
   }
 
   if (['DSN', 'DOSEN'].includes(roleIdentity)) {
-    const lecturer = await prisma.lecturer.findUnique({
-      where: { user_id: user.id },
-      select: {
-        id: true,
-        nip: true,
-        study_programs: {
+    const lecturer = user.lecturer?.study_programs
+      ? user.lecturer
+      : await prisma.lecturer.findUnique({
+          where: { user_id: user.id },
           select: {
-            study_program: {
+            id: true,
+            nip: true,
+            study_programs: {
               select: {
-                id: true,
-                name: true
+                study_program: {
+                  select: {
+                    id: true,
+                    name: true
+                  }
+                }
               }
             }
           }
-        }
-      }
-    })
+        })
 
     return {
       id: lecturer?.id || null,
       nip: lecturer?.nip || null,
       study_programs:
-        lecturer?.study_programs.map((item) => ({
+        lecturer?.study_programs?.map((item) => ({
           id: item.study_program.id,
           name: item.study_program.name
         })) || [],
@@ -86,27 +99,29 @@ const getUserScopes = async (user) => {
     }
   }
 
-  if (['HLP', 'HELPER'].includes(roleIdentity)) {
-    const helper = await prisma.helper.findUnique({
-      where: { user_id: user.id },
-      select: {
-        buildings: {
+  if (['HLP', 'HELPER', 'HP'].includes(roleIdentity)) {
+    const helper = user.helper?.buildings
+      ? user.helper
+      : await prisma.helper.findUnique({
+          where: { user_id: user.id },
           select: {
-            building: {
+            buildings: {
               select: {
-                id: true,
-                name: true
+                building: {
+                  select: {
+                    id: true,
+                    name: true
+                  }
+                }
               }
             }
           }
-        }
-      }
-    })
+        })
 
     return {
       study_programs: [],
       buildings:
-        helper?.buildings.map((item) => ({
+        helper?.buildings?.map((item) => ({
           id: item.building.id,
           name: item.building.name
         })) || []
@@ -152,7 +167,9 @@ const login = async (req, res) => {
               }
             }
           }
-        }
+        },
+        lecturer: true,
+        helper: true
       }
     })
 
@@ -188,7 +205,9 @@ const login = async (req, res) => {
       email: user.email,
       role_name: user.role.name,
       role_id: user.role_id,
-      lecturer_id: scopes.id || null
+      role_code: user.role.code || null,
+      lecturer_id: scopes.id || null,
+      nip: scopes.nip || null
     })
   } catch (err) {
     console.error(err)
@@ -249,6 +268,7 @@ const getMe = async (req, res) => {
             id: m.id,
             name: m.name,
             code: m.code,
+            sequence: m.sequence || 0,
             children: []
           }
         }
@@ -260,14 +280,40 @@ const getMe = async (req, res) => {
               .replace(/_/g, ' ')
               .toLowerCase()
               .replace(/\b\w/g, (l) => l.toUpperCase()),
-            code: p.name.toLowerCase()
+            code: p.name.toLowerCase(),
+            sequence: p.sequence || 0
           })
         }
       })
 
-      return Object.values(modules).sort(
-        (a, b) => (a.sequence || 0) - (b.sequence || 0)
-      )
+      return Object.values(modules)
+        .map((m) => {
+          const firstChild = m.children[0]
+
+          const shouldCollapse = m.is_group === false
+
+          if (shouldCollapse) {
+            return {
+              id: firstChild ? firstChild.id : m.id,
+              name: m.name,
+              code: m.code,
+              sequence: m.sequence || 0,
+              children: []
+            }
+          }
+
+          return {
+            id: m.id,
+            name: m.name,
+            code: m.code,
+            sequence: m.sequence || 0,
+            children: m.children
+              .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+              .map(({ sequence, ...rest }) => rest)
+          }
+        })
+        .sort((a, b) => (a.sequence || 0) - (b.sequence || 0))
+        .map(({ sequence, ...rest }) => rest)
     }
 
     const access = ensureDashboardAccess(

@@ -38,6 +38,7 @@ model Role {
 model Permission {
   id         String           @id @default(cuid())
   name       String           @unique // Contoh: USER_CREATE, DEVICE_CONTROL
+  sequence   Int?             @default(0)
   module_id  String
   module     Module           @relation(fields: [module_id], references: [id])
   roles      RolePermission[]
@@ -49,6 +50,7 @@ model Module {
   name        String       @unique
   code        String       @unique
   sequence    Int?         @default(0)
+  is_group    Boolean      @default(true)
   permissions Permission[]
   created_at  DateTime     @default(now())
 }
@@ -73,6 +75,7 @@ model Room {
   schedules     Schedule[]
   device_status DeviceStatus?
   sensor_logs   SensorLog[]
+  daily_summaries DailySensorSummary[]
   devices       Device[]
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
@@ -270,6 +273,20 @@ model SensorLog {
   @@index([created_at])
 }
 
+model DailySensorSummary {
+  id           String   @id @default(cuid())
+  room_id      String
+  avg_voltage  Float?
+  avg_current  Float?
+  avg_power    Float?
+  total_energy Float?
+  date         DateTime
+  created_at   DateTime @default(now())
+  room         Room     @relation(fields: [room_id], references: [id])
+
+  @@unique([room_id, date])
+}
+
 model Device {
   id         String     @id @default(cuid())
   name       String
@@ -279,6 +296,7 @@ model Device {
   mqtt_topic String?
   stream_url String?
   status     Boolean    @default(true)
+  is_on      Boolean    @default(false)
   created_at DateTime   @default(now())
   updated_at DateTime   @updatedAt
 
@@ -287,7 +305,7 @@ model Device {
 
 enum DeviceType {
   AC
-  LAMP
+  LIGHT
   CCTV
 }
 

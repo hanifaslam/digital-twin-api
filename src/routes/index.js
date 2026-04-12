@@ -17,6 +17,7 @@ const masterTimeSlotRoutes = require('../modules/time-slots/time-slot.routes')
 const masterClassRoutes = require('../modules/classes/class.routes')
 const scheduleRoutes = require('../modules/schedules/schedule.routes')
 const faceRecognitionRoutes = require('../modules/face-recognition/face-recognition.routes')
+const sensorRoutes = require('../modules/sensors/sensor.routes')
 
 router.use('/auth', authRoutes)
 
@@ -35,5 +36,6 @@ router.use('/time-slots', authMiddleware, masterTimeSlotRoutes)
 router.use('/classes', authMiddleware, masterClassRoutes)
 router.use('/schedules', authMiddleware, scheduleRoutes)
 router.use('/face-recognition', authMiddleware, faceRecognitionRoutes)
+router.use('/sensors', sensorRoutes)
 
 module.exports = router

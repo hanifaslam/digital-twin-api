@@ -10,6 +10,7 @@ router.get('/', deviceController.getAll)
 router.get('/:id', deviceController.getById)
 router.patch('/:id', validate(updateDeviceSchema), deviceController.update)
 router.patch('/:id/status', deviceController.toggleStatus)
+router.post('/:id/control', deviceController.deviceControl)
 router.delete('/:id', deviceController.delete)
 
 module.exports = router

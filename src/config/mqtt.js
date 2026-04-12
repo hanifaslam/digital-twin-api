@@ -20,6 +20,97 @@ const initMQTT = () => {
 
   client.on('connect', () => {
     console.log('--- MQTT Connected ---')
+    // Subscribe to all topics to catch status updates from any custom topic structure
+    client.subscribe('#', { qos: 1 }, (err) => {
+      if (!err) console.log('MQTT Subscribed to all topics (#)')
+    })
+  })
+
+  client.on('message', async (topic, message) => {
+    try {
+      const payload = message.toString().toLowerCase()
+      
+      // Expected pattern: any/custom/topic/status
+      if (topic.endsWith('/status')) {
+        const baseTopic = topic.replace('/status', '')
+        const isOn = payload === 'true' || payload === '1' || payload === 'on'
+
+        const prisma = require('./prisma') // Lazy load prisma
+        
+        // Find device by its configured mqtt_topic
+        const device = await prisma.device.findFirst({
+          where: { mqtt_topic: baseTopic }
+        })
+
+        if (device) {
+          await prisma.device.update({
+            where: { id: device.id },
+            data: { is_on: isOn }
+          })
+          
+          // Emit real-time update via Socket.io
+          try {
+            const { getIO } = require('./socket')
+            getIO().emit('device-status', { 
+              device_id: device.id, 
+              name: device.name,
+              is_on: isOn 
+            })
+          } catch (ioError) {
+            // Silently fail if socket is not initialized
+          }
+
+          console.log(`[MQTT] Device '${device.name}' state updated to: ${isOn}`)
+        }
+      }
+
+      // Handler untuk data sensor PZEM (topic berakhiran /data)
+      if (topic.endsWith('/data')) {
+        const baseTopic = topic.replace('/data', '')
+        const prisma = require('./prisma')
+        
+        // Cari device untuk dapetin room_id
+        const device = await prisma.device.findFirst({
+          where: { mqtt_topic: baseTopic },
+          select: { room_id: true, name: true }
+        })
+
+        if (device) {
+          const data = JSON.parse(message.toString())
+          const { voltage, current, power, energy, frequency, power_factor } = data
+
+          const sensorData = {
+            room_id: device.room_id,
+            voltage: voltage ? parseFloat(voltage) : null,
+            current: current ? parseFloat(current) : null,
+            power: power ? parseFloat(power) : null,
+            energy: energy ? parseFloat(energy) : null,
+            frequency: frequency ? parseFloat(frequency) : null,
+            power_factor: power_factor ? parseFloat(power_factor) : null
+          }
+
+          await prisma.sensorLog.create({
+            data: sensorData
+          })
+
+          // Emit real-time update via Socket.io
+          try {
+            const { getIO } = require('./socket')
+            getIO().emit('sensor-data', {
+              ...sensorData,
+              device_name: device.name,
+              timestamp: new Date()
+            })
+          } catch (ioError) {
+            // Silently fail if socket is not initialized
+          }
+
+          console.log(`[MQTT] Sensor data saved for room of device '${device.name}'`)
+        }
+      }
+    } catch (error) {
+      console.error('[MQTT] Message Handler Error:', error.message)
+    }
   })
 
   client.on('error', (err) => {

@@ -39,7 +39,7 @@ const deviceController = {
 
   getAll: async (req, res) => {
     try {
-      const { q, type, room_id, status } = req.query || {}
+      const { q, type, room_id, building_id, status } = req.query || {}
       const statuses = [
         ...new Set(
           status
@@ -66,6 +66,12 @@ const deviceController = {
         where.room_id = room_id
       }
 
+      if (building_id) {
+        where.room = {
+          building_id: building_id
+        }
+      }
+
       if (statuses?.length === 1) {
         where.status = statuses[0] === 'true'
       }
@@ -84,6 +90,7 @@ const deviceController = {
               }
             },
             status: true,
+            is_on: true,
             created_at: true,
             updated_at: true
           },
@@ -102,6 +109,7 @@ const deviceController = {
         type: device.type,
         room_name: device.room?.name,
         status: device.status,
+        is_on: device.is_on,
         created_at: device.created_at,
         updated_at: device.updated_at
       }))
@@ -139,6 +147,7 @@ const deviceController = {
         mqtt_topic: device.mqtt_topic,
         stream_url: device.stream_url,
         status: device.status,
+        is_on: device.is_on,
         created_at: device.created_at,
         updated_at: device.updated_at
       }
@@ -209,6 +218,7 @@ const deviceController = {
         mqtt_topic: updatedDevice.mqtt_topic,
         stream_url: updatedDevice.stream_url,
         status: updatedDevice.status,
+        is_on: updatedDevice.is_on,
         created_at: updatedDevice.created_at,
         updated_at: updatedDevice.updated_at
       }
@@ -261,6 +271,33 @@ const deviceController = {
       }
 
       return success(res, 'success', null)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  deviceControl: async (req, res) => {
+    try {
+      const { id } = req.params
+      const { command } = req.body || {} // expected: true or false (boolean or string)
+
+      const device = await prisma.device.findUnique({
+        where: { id }
+      })
+
+      if (!device) return error(res, 'Device not found', 404)
+      if (!device.mqtt_topic) {
+        return error(res, 'Device has no MQTT topic configured', 400)
+      }
+
+      if (command === undefined || command === null) {
+        return error(res, 'Command is required (true/false)', 400)
+      }
+
+      const message = command === true || command === 'true' ? 'true' : 'false'
+      publish(device.mqtt_topic, message)
+
+      return success(res, `Device command '${message}' sent`)
     } catch (err) {
       return error(res, err.message, 500)
     }

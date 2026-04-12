@@ -4,12 +4,11 @@ const { buildPagination } = require('../../utils/pagination')
 
 const getRoomDependencyCount = (room) => {
   const schedules = room?._count?.schedules || 0
-  const attendances = room?._count?.attendances || 0
   const sensorLogs = room?._count?.sensor_logs || 0
   const devices = room?._count?.devices || 0
   const deviceStatus = room?.device_status ? 1 : 0
 
-  return schedules + attendances + sensorLogs + devices + deviceStatus
+  return schedules + sensorLogs + devices + deviceStatus
 }
 
 const withDeactivationFlag = (room) => {
@@ -24,7 +23,18 @@ const withDeactivationFlag = (room) => {
 const roomController = {
   getAllRooms: async (req, res) => {
     try {
+      const { building_id } = req.query || {}
+
+      let where = {
+        status: true
+      }
+
+      if (building_id) {
+        where.building_id = building_id
+      }
+
       const rooms = await prisma.room.findMany({
+        where,
         select: {
           id: true,
           name: true
@@ -150,7 +160,6 @@ const roomController = {
             _count: {
               select: {
                 schedules: true,
-                attendances: true,
                 sensor_logs: true,
                 devices: true
               }
@@ -200,7 +209,6 @@ const roomController = {
           _count: {
             select: {
               schedules: true,
-              attendances: true,
               sensor_logs: true,
               devices: true
             }
@@ -241,7 +249,6 @@ const roomController = {
           _count: {
             select: {
               schedules: true,
-              attendances: true,
               sensor_logs: true,
               devices: true
             }
@@ -339,7 +346,6 @@ const roomController = {
           _count: {
             select: {
               schedules: true,
-              attendances: true,
               sensor_logs: true,
               devices: true
             }
@@ -357,9 +363,6 @@ const roomController = {
         dependencies.push('schedule')
       }
 
-      if (roomExists._count.attendances > 0) {
-        dependencies.push('attendance')
-      }
 
       if (roomExists._count.sensor_logs > 0) {
         dependencies.push('sensor log')
@@ -406,7 +409,6 @@ const roomController = {
           _count: {
             select: {
               schedules: true,
-              attendances: true,
               sensor_logs: true,
               devices: true
             }
