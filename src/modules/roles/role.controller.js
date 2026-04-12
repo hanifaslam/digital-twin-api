@@ -188,27 +188,40 @@ const roleController = {
       })
 
       const access = modules.map((m) => {
-        const isModuleChecked = m.permissions.some((p) =>
-          rolePermissionIds.includes(p.id)
-        )
+        const isDashboard = m.code.toLowerCase() === 'dashboard'
+        const hasSinglePermission = m.permissions.length === 1
+
+        if (isDashboard || hasSinglePermission) {
+          const p = m.permissions[0]
+          const isChecked = p
+            ? rolePermissionIds.includes(p.id)
+            : m.permissions.some((perm) => rolePermissionIds.includes(perm.id))
+
+          return {
+            id: p ? p.id : m.id,
+            code: m.code.toUpperCase(),
+            name: m.name,
+            is_checked: isChecked,
+            children: []
+          }
+        }
 
         return {
           id: m.id,
           code: m.code.toUpperCase(),
           name: m.name,
-          is_checked: isModuleChecked,
-          children:
-            m.code.toLowerCase() === 'dashboard'
-              ? []
-              : m.permissions.map((p) => ({
-                  id: p.id,
-                  code: p.name,
-                  name: p.name
-                    .replace(/_/g, ' ')
-                    .toLowerCase()
-                    .replace(/\b\w/g, (l) => l.toUpperCase()),
-                  is_checked: rolePermissionIds.includes(p.id)
-                }))
+          is_checked: m.permissions.some((p) =>
+            rolePermissionIds.includes(p.id)
+          ),
+          children: m.permissions.map((p) => ({
+            id: p.id,
+            code: p.name,
+            name: p.name
+              .replace(/_/g, ' ')
+              .toLowerCase()
+              .replace(/\b\w/g, (l) => l.toUpperCase()),
+            is_checked: rolePermissionIds.includes(p.id)
+          }))
         }
       })
 

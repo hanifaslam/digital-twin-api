@@ -38,6 +38,7 @@ model Role {
 model Permission {
   id         String           @id @default(cuid())
   name       String           @unique // Contoh: USER_CREATE, DEVICE_CONTROL
+  sequence   Int?             @default(0)
   module_id  String
   module     Module           @relation(fields: [module_id], references: [id])
   roles      RolePermission[]
