@@ -74,6 +74,7 @@ model Room {
   schedules     Schedule[]
   device_status DeviceStatus?
   sensor_logs   SensorLog[]
+  daily_summaries DailySensorSummary[]
   devices       Device[]
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
@@ -269,6 +270,20 @@ model SensorLog {
 
   @@index([room_id])
   @@index([created_at])
+}
+
+model DailySensorSummary {
+  id           String   @id @default(cuid())
+  room_id      String
+  avg_voltage  Float?
+  avg_current  Float?
+  avg_power    Float?
+  total_energy Float?
+  date         DateTime
+  created_at   DateTime @default(now())
+  room         Room     @relation(fields: [room_id], references: [id])
+
+  @@unique([room_id, date])
 }
 
 model Device {

@@ -50,6 +50,34 @@ const initMQTT = () => {
           console.log(`[MQTT] Device '${device.name}' state updated to: ${isOn}`)
         }
       }
+
+      // Handler untuk data sensor PZEM (topic berakhiran /data)
+      if (topic.endsWith('/data')) {
+        const baseTopic = topic.replace('/data', '')
+        const prisma = require('./prisma')
+        
+        // Cari device untuk dapetin room_id
+        const device = await prisma.device.findFirst({
+          where: { mqtt_topic: baseTopic },
+          select: { room_id: true, name: true }
+        })
+
+        if (device) {
+          const data = JSON.parse(message.toString())
+          const { voltage, current, power, energy } = data
+
+          await prisma.sensorLog.create({
+            data: {
+              room_id: device.room_id,
+              voltage: voltage ? parseFloat(voltage) : null,
+              current: current ? parseFloat(current) : null,
+              power: power ? parseFloat(power) : null,
+              energy: energy ? parseFloat(energy) : null
+            }
+          })
+          console.log(`[MQTT] Sensor data saved for room of device '${device.name}'`)
+        }
+      }
     } catch (error) {
       console.error('[MQTT] Message Handler Error:', error.message)
     }
