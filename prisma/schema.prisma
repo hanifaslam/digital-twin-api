@@ -297,6 +297,7 @@ model Device {
   stream_url String?
   status     Boolean    @default(true)
   is_on      Boolean    @default(false)
+  is_online  Boolean    @default(false)
   created_at DateTime   @default(now())
   updated_at DateTime   @updatedAt
 

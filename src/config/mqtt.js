@@ -44,15 +44,12 @@ const initMQTT = () => {
         })
 
         if (device) {
-          // Skip if status is the same to avoid unnecessary DB updates and socket emissions
-          if (device.is_on === isOn) return
-
           await prisma.device.update({
             where: { id: device.id },
             data: { is_on: isOn }
           })
           
-          // Emit real-time update via Socket.io
+          // Emit selalu dilakukan agar semua tab (Web 1, Web 2) tersinkronisasi
           try {
             getIO().emit('device-status', { 
               device_id: device.id, 
@@ -107,6 +104,43 @@ const initMQTT = () => {
           }
 
           console.log(`[MQTT] Sensor data saved for room of device '${device.name}'`)
+        }
+      }
+
+      // Handler untuk availability (online/offline)
+      if (topic.endsWith('/availability')) {
+        const availabilityTopic = topic.replace('/availability', '')
+        const isOnline = payload === 'online'
+
+        // Cari semua device yang mqtt_topic-nya diawali dengan baseTopic ini
+        // Contoh: topic dosen_trk/availability -> update semua device yang mqtt_topic nya mengandung dosen_trk
+        const devices = await prisma.device.findMany({
+          where: {
+            mqtt_topic: {
+              startsWith: availabilityTopic
+            }
+          }
+        })
+
+        if (devices.length > 0) {
+          await prisma.device.updateMany({
+            where: {
+              id: { in: devices.map(d => d.id) }
+            },
+            data: { is_online: isOnline }
+          })
+
+          devices.forEach(device => {
+            try {
+              getIO().emit('device-status', {
+                device_id: device.id,
+                name: device.name,
+                is_online: isOnline
+              })
+            } catch (ioError) {}
+          })
+
+          console.log(`[MQTT] ${devices.length} devices marked as ${isOnline ? 'ONLINE' : 'OFFLINE'} via ${topic}`)
         }
       }
     } catch (error) {

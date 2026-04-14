@@ -2,7 +2,7 @@ const { DeviceType } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
-const { publish } = require('../../config/mqtt')
+const { publish, getMQTTClient } = require('../../config/mqtt')
 
 const deviceController = {
   create: async (req, res) => {
@@ -91,6 +91,7 @@ const deviceController = {
             },
             status: true,
             is_on: true,
+            is_online: true,
             created_at: true,
             updated_at: true
           },
@@ -103,6 +104,9 @@ const deviceController = {
         prisma.device.count({ where })
       ])
 
+      const mqttClient = getMQTTClient()
+      const isMqttConnected = mqttClient ? mqttClient.connected : false
+
       const result = devices.map((device) => ({
         id: device.id,
         name: device.name,
@@ -111,6 +115,8 @@ const deviceController = {
         room_name: device.room?.name,
         status: device.status,
         is_on: device.is_on,
+        is_online: device.is_online,
+        is_mqtt_connected: isMqttConnected,
         created_at: device.created_at,
         updated_at: device.updated_at
       }))
