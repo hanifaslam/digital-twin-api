@@ -182,12 +182,20 @@ const faceRecognitionController = {
 
       // --- LOGIKA VALIDASI KOORDINAT ---
       if (activeSchedule && activeSchedule.room) {
-        const { latitude: roomLat, longitude: roomLng, radius } = activeSchedule.room
+        const {
+          latitude: roomLat,
+          longitude: roomLng,
+          radius
+        } = activeSchedule.room
         const { latitude: userLat, longitude: userLng } = req.body
 
         if (roomLat && roomLng) {
           if (!userLat || !userLng) {
-            return error(res, 'Location coordinates (latitude & longitude) are required for verification in this room', 400)
+            return error(
+              res,
+              'Location coordinates (latitude & longitude) are required for verification in this room',
+              400
+            )
           }
 
           const distance = calculateDistance(
@@ -208,9 +216,7 @@ const faceRecognitionController = {
       }
 
       const isWeekend = dayIndex === 0 || dayIndex === 6
-      // let availableStatus = !isWeekend
-      //?? FOR TESTING: Forced to true
-      let availableStatus = true
+      let availableStatus = !isWeekend
 
       if (activeSchedule) {
         const { start_time, end_time } = activeSchedule.time_slot
@@ -318,8 +324,8 @@ const faceRecognitionController = {
         lateMinutes = Math.max(0, totalMinutes - deadlineMinutes)
       }
 
-      //? For development purposes, we allow verification anytime as long as registered
-      const canVerify = !!faceData
+      //? For production: Limit verification by time and day
+      const canVerify = !!faceData && !isWeekend && timeAllowed
 
       return success(res, 'success', {
         registered: !!faceData,
