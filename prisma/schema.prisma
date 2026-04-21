@@ -77,6 +77,9 @@ model Room {
   sensor_logs   SensorLog[]
   daily_summaries DailySensorSummary[]
   devices       Device[]
+  latitude      Float?
+  longitude     Float?
+  radius        Float?         @default(50) // in meters
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
 

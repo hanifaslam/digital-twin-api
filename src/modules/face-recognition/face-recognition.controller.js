@@ -44,6 +44,21 @@ const cosineSimilarity = (a, b) => {
   return dot / (normA * normB)
 }
 
+const calculateDistance = (lat1, lon1, lat2, lon2) => {
+  const R = 6371e3 // metres
+  const φ1 = (lat1 * Math.PI) / 180
+  const φ2 = (lat2 * Math.PI) / 180
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+  return R * c // in metres
+}
+
 const faceRecognitionController = {
   register: async (req, res) => {
     const file = req.file
@@ -159,15 +174,43 @@ const faceRecognitionController = {
             status: true
           },
           include: {
-            time_slot: true
+            time_slot: true,
+            room: true
           }
         })
+      }
+
+      // --- LOGIKA VALIDASI KOORDINAT ---
+      if (activeSchedule && activeSchedule.room) {
+        const { latitude: roomLat, longitude: roomLng, radius } = activeSchedule.room
+        const { latitude: userLat, longitude: userLng } = req.body
+
+        if (roomLat && roomLng) {
+          if (!userLat || !userLng) {
+            return error(res, 'Location coordinates (latitude & longitude) are required for verification in this room', 400)
+          }
+
+          const distance = calculateDistance(
+            parseFloat(userLat),
+            parseFloat(userLng),
+            roomLat,
+            roomLng
+          )
+
+          if (distance > (radius || 50)) {
+            return error(
+              res,
+              `You are too far from the scheduled room (${activeSchedule.room.name}). Current distance: ${Math.round(distance)}m`,
+              403
+            )
+          }
+        }
       }
 
       const isWeekend = dayIndex === 0 || dayIndex === 6
       // let availableStatus = !isWeekend
       //?? FOR TESTING: Forced to true
-      availableStatus = true
+      let availableStatus = true
 
       if (activeSchedule) {
         const { start_time, end_time } = activeSchedule.time_slot
