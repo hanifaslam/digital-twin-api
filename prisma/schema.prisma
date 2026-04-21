@@ -77,6 +77,9 @@ model Room {
   sensor_logs   SensorLog[]
   daily_summaries DailySensorSummary[]
   devices       Device[]
+  latitude      Float?
+  longitude     Float?
+  radius        Float?         @default(50) // in meters
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
 
@@ -134,6 +137,7 @@ model Class {
 model Lecturer {
   id               String                @id @default(cuid())
   nip              String                @unique
+  phone_number     String?
   user_id          String                @unique
   user             User                  @relation(fields: [user_id], references: [id])
   study_programs   LecturerStudyProgram[]

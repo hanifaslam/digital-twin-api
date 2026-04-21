@@ -44,7 +44,7 @@ const formatStudyProgramsForList = (studyPrograms = []) =>
 const lecturerController = {
   create: async (req, res) => {
     try {
-      const { nip, study_program_ids, user_id } = req.body || {}
+      const { nip, study_program_ids, user_id, phone_number } = req.body || {}
       const uniqueStudyProgramIds = normalizeStudyProgramIds(study_program_ids)
 
       if (!nip || uniqueStudyProgramIds.length === 0 || !user_id) {
@@ -95,6 +95,7 @@ const lecturerController = {
         data: {
           nip,
           user_id,
+          phone_number,
           study_programs: {
             create: uniqueStudyProgramIds.map((study_program_id) => ({
               study_program_id
@@ -208,6 +209,7 @@ const lecturerController = {
         email: lecturer.user?.email,
         status: lecturer.user?.status ?? false,
         nip: lecturer.nip,
+        phone_number: lecturer.phone_number,
         study_program: formatStudyProgramsForList(lecturer.study_programs),
         created_at: lecturer.created_at,
         updated_at: lecturer.updated_at
@@ -238,6 +240,7 @@ const lecturerController = {
         name: lecturer.user?.name,
         email: lecturer.user?.email,
         status: lecturer.user?.status ?? false,
+        phone_number: lecturer.phone_number,
         study_program: formatStudyProgramsForShow(lecturer.study_programs),
         created_at: lecturer.created_at,
         updated_at: lecturer.updated_at
@@ -252,7 +255,7 @@ const lecturerController = {
   update: async (req, res) => {
     try {
       const { id } = req.params
-      const { nip, study_program_ids, user_id } = req.body || {}
+      const { nip, study_program_ids, user_id, phone_number } = req.body || {}
       const uniqueStudyProgramIds = study_program_ids
         ? normalizeStudyProgramIds(study_program_ids)
         : undefined
@@ -314,7 +317,8 @@ const lecturerController = {
 
       let updateData = {
         nip,
-        user_id
+        user_id,
+        phone_number
       }
 
       Object.keys(updateData).forEach(
