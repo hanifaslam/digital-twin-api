@@ -16,7 +16,7 @@ const withDeactivationFlag = (building) => {
 const buildingController = {
   create: async (req, res) => {
     try {
-      const { name, code, status } = req.body || {}
+      const { name, code, status, latitude, longitude, radius } = req.body || {}
 
       if (!name) {
         return error(res, 'Missing required fields', 400)
@@ -43,6 +43,9 @@ const buildingController = {
         data: {
           name,
           code,
+          latitude: latitude ? parseFloat(latitude) : null,
+          longitude: longitude ? parseFloat(longitude) : null,
+          radius: radius ? parseFloat(radius) : 100,
           status:
             status !== undefined ? status === 'true' || status === true : true
         }
@@ -163,7 +166,7 @@ const buildingController = {
   update: async (req, res) => {
     try {
       const { id } = req.params
-      const { name, code, status } = req.body || {}
+      const { name, code, status, latitude, longitude, radius } = req.body || {}
 
       const buildingExists = await prisma.building.findUnique({
         where: { id },
@@ -213,6 +216,9 @@ const buildingController = {
       let updateData = {
         name,
         code,
+        latitude: latitude !== undefined ? parseFloat(latitude) : undefined,
+        longitude: longitude !== undefined ? parseFloat(longitude) : undefined,
+        radius: radius !== undefined ? parseFloat(radius) : undefined,
         status:
           status !== undefined
             ? status === 'true' || status === true

@@ -52,7 +52,7 @@ const roomController = {
 
   create: async (req, res) => {
     try {
-      const { name, building_id, floor_id, latitude, longitude, radius, status } = req.body || {}
+      const { name, building_id, floor_id, status } = req.body || {}
 
       if (!name || !building_id || !floor_id) {
         return error(res, 'Missing required fields', 400)
@@ -90,9 +90,6 @@ const roomController = {
           name,
           building_id,
           floor_id,
-          latitude: (latitude !== undefined && latitude !== null && latitude !== '') ? parseFloat(latitude) : null,
-          longitude: (longitude !== undefined && longitude !== null && longitude !== '') ? parseFloat(longitude) : null,
-          radius: (radius !== undefined && radius !== null && radius !== '') ? parseFloat(radius) : undefined,
           status:
             status !== undefined ? status === 'true' || status === true : true
         }
@@ -244,7 +241,7 @@ const roomController = {
   update: async (req, res) => {
     try {
       const { id } = req.params
-      const { name, building_id, floor_id, latitude, longitude, radius, status } = req.body || {}
+      const { name, building_id, floor_id, status } = req.body || {}
 
       const roomExists = await prisma.room.findUnique({
         where: { id },
@@ -315,9 +312,6 @@ const roomController = {
         name,
         building_id,
         floor_id,
-        latitude: latitude !== undefined ? (latitude !== null && latitude !== '' ? parseFloat(latitude) : null) : undefined,
-        longitude: longitude !== undefined ? (longitude !== null && longitude !== '' ? parseFloat(longitude) : null) : undefined,
-        radius: radius !== undefined ? (radius !== null && radius !== '' ? parseFloat(radius) : null) : undefined,
         status:
           status !== undefined
             ? status === 'true' || status === true

@@ -15,7 +15,7 @@ const withDeactivationFlag = (studyProgram) => {
 const studyProgramController = {
   create: async (req, res) => {
     try {
-      const { name, code, status } = req.body || {}
+      const { name, code, status, home_room_id } = req.body || {}
 
       if (!name || !code) {
         return error(res, 'Missing required fields', 400)
@@ -40,6 +40,7 @@ const studyProgramController = {
         data: {
           name,
           code,
+          home_room_id,
           status: status !== undefined ? status : true
         }
       })
@@ -138,6 +139,7 @@ const studyProgramController = {
       const studyProgram = await prisma.studyProgram.findUnique({
         where: { id },
         include: {
+          home_room: { include: { building: true } },
           _count: {
             select: {
               courses: true
@@ -157,7 +159,7 @@ const studyProgramController = {
   update: async (req, res) => {
     try {
       const { id } = req.params
-      const { name, code, status } = req.body || {}
+      const { name, code, status, home_room_id } = req.body || {}
 
       const programExists = await prisma.studyProgram.findUnique({
         where: { id },
@@ -199,7 +201,7 @@ const studyProgramController = {
         }
       }
 
-      let updateData = { name, code, status }
+      let updateData = { name, code, status, home_room_id }
       Object.keys(updateData).forEach(
         (key) => updateData[key] === undefined && delete updateData[key]
       )
