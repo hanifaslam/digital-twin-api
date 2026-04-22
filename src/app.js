@@ -126,3 +126,5 @@ const shutdown = async (signal) => {
 process.on('SIGINT', () => shutdown('SIGINT'))
 process.on('SIGTERM', () => shutdown('SIGTERM'))
 process.on('SIGUSR2', () => shutdown('SIGUSR2'))
+
+// test
