@@ -152,7 +152,7 @@ const faceRecognitionController = {
         return error(res, 'Face not recognized', 401)
       }
 
-      // --- LOGIKA CEK JADWAL ---
+      // --- LOGIKA CEK JADWAL & LOKASI ---
       const now = new Date()
       const dayIndex = now.getDay()
       const dayMap = {
@@ -164,66 +164,144 @@ const faceRecognitionController = {
       }
       const currentDay = dayMap[dayIndex]
       const currentTime = formatTime(now)
+      const { latitude: userLat, longitude: userLng } = req.body
 
-      let activeSchedule = null
-      if (currentDay) {
-        activeSchedule = await prisma.schedule.findFirst({
-          where: {
-            lecturer_id: lecturerId,
-            day: currentDay,
-            status: true
-          },
-          include: {
-            time_slot: true,
-            room: true
+      // 1. Cari Jadwal Aktif (Sedang Berlangsung)
+      const activeSchedule = currentDay
+        ? await prisma.schedule.findFirst({
+            where: {
+              lecturer_id: lecturerId,
+              day: currentDay,
+              status: true,
+              time_slot: {
+                start_time: { lte: currentTime },
+                end_time: { gte: currentTime }
+              }
+            },
+            include: { room: { include: { building: true } }, time_slot: true }
+          })
+        : null
+
+      // 2. Cari Jadwal Mendatang (Persiapan Mengajar - 30 Menit Sebelumnya)
+      const upcomingSchedule = currentDay
+        ? await prisma.schedule.findFirst({
+            where: {
+              lecturer_id: lecturerId,
+              day: currentDay,
+              status: true,
+              time_slot: { start_time: { gt: currentTime } }
+            },
+            orderBy: { time_slot: { start_time: 'asc' } },
+            include: { room: { include: { building: true } }, time_slot: true }
+          })
+        : null
+
+      // 3. Ambil Data Dosen & Home Room (Ruang Dosen)
+      const lecturer = await prisma.lecturer.findUnique({
+        where: { id: lecturerId },
+        include: {
+          study_programs: {
+            include: {
+              study_program: {
+                include: { home_room: { include: { building: true } } }
+              }
+            }
           }
+        }
+      })
+
+      // 4. Kumpulkan Semua Titik Lokasi Valid
+      const validPoints = []
+
+      // Tambahkan Ruang Dosen dari tiap Prodi si Dosen
+      lecturer.study_programs.forEach((sp) => {
+        if (sp.study_program.home_room) {
+          validPoints.push({
+            name: `Ruang Dosen (${sp.study_program.name})`,
+            room: sp.study_program.home_room
+          })
+        }
+      })
+
+      // Tambahkan Ruang Jadwal Aktif
+      if (activeSchedule) {
+        validPoints.push({
+          name: `Ruang Kelas Aktif (${activeSchedule.room.name})`,
+          room: activeSchedule.room
         })
       }
 
-      // --- LOGIKA VALIDASI KOORDINAT ---
-      if (activeSchedule && activeSchedule.room) {
-        const {
-          latitude: roomLat,
-          longitude: roomLng,
-          radius
-        } = activeSchedule.room
-        const { latitude: userLat, longitude: userLng } = req.body
+      // Tambahkan Ruang Jadwal Mendatang (Jika dalam 30 menit)
+      if (upcomingSchedule) {
+        const [currH, currM] = currentTime.split(':').map(Number)
+        const [startH, startM] = upcomingSchedule.time_slot.start_time
+          .split(':')
+          .map(Number)
+        const diffMinutes = startH * 60 + startM - (currH * 60 + currM)
 
-        if (roomLat && roomLng) {
-          if (!userLat || !userLng) {
-            return error(
-              res,
-              'Location coordinates (latitude & longitude) are required for verification in this room',
-              400
-            )
-          }
-
-          const distance = calculateDistance(
-            parseFloat(userLat),
-            parseFloat(userLng),
-            roomLat,
-            roomLng
-          )
-
-          if (distance > (radius || 50)) {
-            return error(
-              res,
-              `You are too far from the scheduled room (${activeSchedule.room.name}). Current distance: ${Math.round(distance)}m`,
-              403
-            )
-          }
+        if (diffMinutes <= 30) {
+          validPoints.push({
+            name: `Persiapan Kelas (${upcomingSchedule.room.name})`,
+            room: upcomingSchedule.room
+          })
         }
       }
 
+      // 5. Validasi Lokasi User
+      if (validPoints.length > 0) {
+        if (!userLat || !userLng) {
+          return error(
+            res,
+            'Location coordinates (latitude & longitude) are required for verification',
+            400
+          )
+        }
+
+        let isAtValidLocation = false
+        let minDistance = Infinity
+        let closestTarget = ''
+
+        for (const point of validPoints) {
+          const lat = point.room.building?.latitude
+          const lng = point.room.building?.longitude
+          const radius = point.room.building?.radius || 100
+
+          if (lat && lng) {
+            const distance = calculateDistance(
+              parseFloat(userLat),
+              parseFloat(userLng),
+              lat,
+              lng
+            )
+
+            if (distance <= radius) {
+              isAtValidLocation = true
+              break
+            }
+
+            if (distance < minDistance) {
+              minDistance = distance
+              closestTarget = point.name
+            }
+          }
+        }
+
+        if (!isAtValidLocation) {
+          return error(
+            res,
+            `You are too far from any valid location. Closest to: ${closestTarget} (${Math.round(minDistance)}m)`,
+            403
+          )
+        }
+      }
+
+      // --- UPDATE STATUS DOSEN ---
       const isWeekend = dayIndex === 0 || dayIndex === 6
       let availableStatus = !isWeekend
 
+      // Jika ada jadwal aktif sekarang, status otomatis BUSY
       if (activeSchedule) {
-        const { start_time, end_time } = activeSchedule.time_slot
-
-        if (currentTime >= start_time && currentTime <= end_time) {
-          availableStatus = false
-        }
+        availableStatus = false
       }
 
       const updated = await prisma.lecturer.update({

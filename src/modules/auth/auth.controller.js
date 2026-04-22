@@ -194,7 +194,7 @@ const login = async (req, res) => {
 
     res.cookie('refreshToken', refreshToken, {
       ...cookieOptions,
-      ...(remember_me && { maxAge: 7 * 24 * 60 * 60 * 1000 })
+      maxAge: remember_me ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
     })
 
     const scopes = await getUserScopes(user)
