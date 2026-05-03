@@ -1,6 +1,8 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
+const { Day } = require('@prisma/client')
+const { getJakartaTime } = require('../../utils/date')
 
 const getRoomDependencyCount = (room) => {
   const schedules = room?._count?.schedules || 0
@@ -436,6 +438,94 @@ const roomController = {
       })
 
       return success(res, 'success', null)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  getPublicSchedules: async (req, res) => {
+    try {
+      const { id: room_id } = req.params
+      if (!room_id) {
+        return error(res, 'room_id path parameter is required', 400)
+      }
+
+      const now = new Date()
+      const daysMap = {
+        1: Day.MONDAY,
+        2: Day.TUESDAY,
+        3: Day.WEDNESDAY,
+        4: Day.THURSDAY,
+        5: Day.FRIDAY
+      }
+      const currentDay = daysMap[now.getDay()]
+
+      const schedules = await prisma.schedule.findMany({
+        where: {
+          room_id: room_id,
+          day: currentDay || undefined,
+          status: true
+        },
+        include: {
+          course: {
+            select: { name: true, code: true }
+          },
+          time_slot: {
+            select: { start_time: true, end_time: true }
+          },
+          lecturer: {
+            include: {
+              user: {
+                select: { name: true }
+              }
+            }
+          }
+        },
+        orderBy: {
+          time_slot: {
+            start_time: 'asc'
+          }
+        }
+      })
+
+      const formattedSchedules = schedules.map((s) => ({
+        id: s.id,
+        course_name: s.course.name,
+        course_code: s.course.code,
+        start_time: s.time_slot.start_time,
+        end_time: s.time_slot.end_time,
+        lecturer_name: s.lecturer.user?.name || 'N/A'
+      }))
+
+      return success(res, 'success', formattedSchedules)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  getPublicRoomInfo: async (req, res) => {
+    try {
+      const { id } = req.params
+      const room = await prisma.room.findUnique({
+        where: { id },
+        include: {
+          building: true,
+          floor: true
+        }
+      })
+
+      if (!room) {
+        return error(res, 'Room not found', 404)
+      }
+
+      const responseData = {
+        id: room.id,
+        name: room.name,
+        building: room.building?.name,
+        floor: room.floor?.name
+      }
+
+      return success(res, 'success', responseData)
     } catch (err) {
       return error(res, err.message, 500)
     }

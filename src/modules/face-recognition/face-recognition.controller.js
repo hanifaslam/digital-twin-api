@@ -260,6 +260,7 @@ const faceRecognitionController = {
         let isAtValidLocation = false
         let minDistance = Infinity
         let closestTarget = ''
+        let matchedRoomId = null // <--- Simpan ID ruangan yang cocok
 
         for (const point of validPoints) {
           const lat = point.room.building?.latitude
@@ -276,6 +277,7 @@ const faceRecognitionController = {
 
             if (distance <= radius) {
               isAtValidLocation = true
+              matchedRoomId = point.room.id // <--- Ambil ID ruangan ini
               break
             }
 
@@ -317,7 +319,8 @@ const faceRecognitionController = {
       try {
         await prisma.attendance.create({
           data: {
-            lecturer_id: lecturerId
+            lecturer_id: lecturerId,
+            room_id: matchedRoomId // <--- Simpan ke database
           }
         })
       } catch (e) {
