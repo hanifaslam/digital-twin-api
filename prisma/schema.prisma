@@ -77,6 +77,7 @@ model Room {
   sensor_logs   SensorLog[]
   daily_summaries DailySensorSummary[]
   devices       Device[]
+  attendances   Attendance[]
   home_study_programs StudyProgram[] @relation("StudyProgramHomeRoom")
   created_at    DateTime       @default(now())
   updated_at    DateTime       @updatedAt
@@ -248,11 +249,14 @@ model Schedule {
 model Attendance {
   id           String    @id @default(cuid())
   lecturer_id  String
+  room_id      String?
   check_in_at  DateTime  @default(now())
   lecturer     Lecturer  @relation(fields: [lecturer_id], references: [id])
+  room         Room?     @relation(fields: [room_id], references: [id])
 
   @@index([lecturer_id])
   @@index([check_in_at])
+  @@index([room_id])
 }
 
 model DeviceStatus {
