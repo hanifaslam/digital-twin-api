@@ -448,6 +448,18 @@ const lecturerController = {
         ':' +
         minutes.toString().padStart(2, '0')
 
+      const room = await prisma.room.findUnique({
+        where: { id: room_id },
+        include: {
+          building: true,
+          floor: true
+        }
+      })
+
+      if (!room) {
+        return error(res, 'Room not found', 404)
+      }
+
       const lecturers = await prisma.lecturer.findMany({
         where: {
           OR: [
@@ -530,7 +542,7 @@ const lecturerController = {
         }
       })
 
-      const formatted = lecturers.map((lecturer) => {
+      const formattedLecturers = lecturers.map((lecturer) => {
         const activeSchedule = lecturer.schedules.find((s) => {
           const { start_time, end_time } = s.time_slot
           return currentTime >= start_time && currentTime <= end_time
@@ -560,7 +572,15 @@ const lecturerController = {
         }
       })
 
-      return success(res, 'success', formatted)
+      const responseData = {
+        id: room.id,
+        name: room.name,
+        building: room.building?.name,
+        floor: room.floor?.name,
+        lecturers: formattedLecturers
+      }
+
+      return success(res, 'success', responseData)
     } catch (err) {
       return error(res, err.message, 500)
     }
