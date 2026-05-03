@@ -22,8 +22,9 @@ const faceRecognitionRoutes = require('../modules/face-recognition/face-recognit
 const sensorRoutes = require('../modules/sensors/sensor.routes')
 
 router.use('/auth', authRoutes)
-router.get('/dashboard/lecturers', lecturerController.getPublicLecturers)
-router.get('/dashboard/schedules', roomController.getPublicSchedules)
+router.get('/dashboard/rooms/:id', roomController.getPublicRoomInfo)
+router.get('/dashboard/rooms/:id/lecturers', lecturerController.getPublicLecturers)
+router.get('/dashboard/rooms/:id/schedules', roomController.getPublicSchedules)
 
 router.use('/users', authMiddleware, userRoutes)
 router.use('/lecturers', authMiddleware, lecturerRoutes)

@@ -428,9 +428,9 @@ const lecturerController = {
 
   getPublicLecturers: async (req, res) => {
     try {
-      const { room_id } = req.query
+      const { id: room_id } = req.params
       if (!room_id) {
-        return error(res, 'room_id query parameter is required', 400)
+        return error(res, 'room_id path parameter is required', 400)
       }
 
       const now = new Date()
@@ -447,18 +447,6 @@ const lecturerController = {
         hours.toString().padStart(2, '0') +
         ':' +
         minutes.toString().padStart(2, '0')
-
-      const room = await prisma.room.findUnique({
-        where: { id: room_id },
-        include: {
-          building: true,
-          floor: true
-        }
-      })
-
-      if (!room) {
-        return error(res, 'Room not found', 404)
-      }
 
       const lecturers = await prisma.lecturer.findMany({
         where: {
@@ -572,15 +560,7 @@ const lecturerController = {
         }
       })
 
-      const responseData = {
-        id: room.id,
-        name: room.name,
-        building: room.building?.name,
-        floor: room.floor?.name,
-        lecturers: formattedLecturers
-      }
-
-      return success(res, 'success', responseData)
+      return success(res, 'success', formattedLecturers)
     } catch (err) {
       return error(res, err.message, 500)
     }

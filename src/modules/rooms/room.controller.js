@@ -445,9 +445,9 @@ const roomController = {
 
   getPublicSchedules: async (req, res) => {
     try {
-      const { room_id } = req.query
+      const { id: room_id } = req.params
       if (!room_id) {
-        return error(res, 'room_id query parameter is required', 400)
+        return error(res, 'room_id path parameter is required', 400)
       }
 
       const now = new Date()
@@ -460,45 +460,35 @@ const roomController = {
       }
       const currentDay = daysMap[now.getDay()]
 
-      const room = await prisma.room.findUnique({
-        where: { id: room_id },
+      const schedules = await prisma.schedule.findMany({
+        where: {
+          room_id: room_id,
+          day: currentDay || undefined,
+          status: true
+        },
         include: {
-          building: true,
-          floor: true,
-          schedules: {
-            where: {
-              day: currentDay || undefined,
-              status: true
-            },
+          course: {
+            select: { name: true, code: true }
+          },
+          time_slot: {
+            select: { start_time: true, end_time: true }
+          },
+          lecturer: {
             include: {
-              course: {
-                select: { name: true, code: true }
-              },
-              time_slot: {
-                select: { start_time: true, end_time: true }
-              },
-              lecturer: {
-                include: {
-                  user: {
-                    select: { name: true }
-                  }
-                }
-              }
-            },
-            orderBy: {
-              time_slot: {
-                start_time: 'asc'
+              user: {
+                select: { name: true }
               }
             }
+          }
+        },
+        orderBy: {
+          time_slot: {
+            start_time: 'asc'
           }
         }
       })
 
-      if (!room) {
-        return error(res, 'Room not found', 404)
-      }
-
-      const formattedSchedules = room.schedules.map((s) => ({
+      const formattedSchedules = schedules.map((s) => ({
         id: s.id,
         course_name: s.course.name,
         course_code: s.course.code,
@@ -507,12 +497,32 @@ const roomController = {
         lecturer_name: s.lecturer.user?.name || 'N/A'
       }))
 
+      return success(res, 'success', formattedSchedules)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  getPublicRoomInfo: async (req, res) => {
+    try {
+      const { id } = req.params
+      const room = await prisma.room.findUnique({
+        where: { id },
+        include: {
+          building: true,
+          floor: true
+        }
+      })
+
+      if (!room) {
+        return error(res, 'Room not found', 404)
+      }
+
       const responseData = {
         id: room.id,
         name: room.name,
         building: room.building?.name,
-        floor: room.floor?.name,
-        schedules: formattedSchedules
+        floor: room.floor?.name
       }
 
       return success(res, 'success', responseData)
