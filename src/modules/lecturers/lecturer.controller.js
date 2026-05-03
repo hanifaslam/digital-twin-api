@@ -3,6 +3,8 @@ const { success, error } = require('../../config/response')
 const redisClient = require('../../config/redis')
 const { buildPagination } = require('../../utils/pagination')
 const { getIO } = require('../../config/socket')
+const { Day } = require('@prisma/client')
+const { getJakartaTime } = require('../../utils/date')
 
 const normalizeStudyProgramIds = (studyProgramIds) => [
   ...new Set((studyProgramIds || []).map((id) => id?.trim()).filter(Boolean))
@@ -419,6 +421,146 @@ const lecturerController = {
       }
 
       return success(res, `success`, null)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  getPublicLecturers: async (req, res) => {
+    try {
+      const { room_id } = req.query
+      if (!room_id) {
+        return error(res, 'room_id query parameter is required', 400)
+      }
+
+      const now = new Date()
+      const daysMap = {
+        1: Day.MONDAY,
+        2: Day.TUESDAY,
+        3: Day.WEDNESDAY,
+        4: Day.THURSDAY,
+        5: Day.FRIDAY
+      }
+      const currentDay = daysMap[now.getDay()]
+      const { hours, minutes } = getJakartaTime(now)
+      const currentTime =
+        hours.toString().padStart(2, '0') +
+        ':' +
+        minutes.toString().padStart(2, '0')
+
+      const lecturers = await prisma.lecturer.findMany({
+        where: {
+          OR: [
+            {
+              // Dosen yang sedang mengajar di ruangan ini sekarang
+              schedules: {
+                some: {
+                  room_id: room_id,
+                  day: currentDay || undefined,
+                  status: true,
+                  time_slot: {
+                    start_time: { lte: currentTime },
+                    end_time: { gte: currentTime }
+                  }
+                }
+              }
+            },
+            {
+              // Dosen yang ruangan aslinya (home room) adalah ruangan ini
+              study_programs: {
+                some: {
+                  study_program: {
+                    home_room_id: room_id
+                  }
+                }
+              }
+            }
+          ]
+        },
+        include: {
+          user: {
+            select: {
+              name: true
+            }
+          },
+          study_programs: {
+            include: {
+              study_program: {
+                select: {
+                  id: true,
+                  name: true,
+                  home_room_id: true
+                }
+              }
+            }
+          },
+          schedules: {
+            where: {
+              day: currentDay || undefined,
+              status: true
+            },
+            include: {
+              room: {
+                include: {
+                  building: true,
+                  floor: true
+                }
+              },
+              time_slot: true,
+              course: true
+            }
+          },
+          attendances: {
+            where: {
+              room_id: room_id,
+              check_in_at: {
+                gte: new Date(new Date().setHours(0, 0, 0, 0))
+              }
+            },
+            orderBy: {
+              check_in_at: 'desc'
+            },
+            take: 1
+          }
+        },
+        orderBy: {
+          user: {
+            name: 'asc'
+          }
+        }
+      })
+
+      const formatted = lecturers.map((lecturer) => {
+        const activeSchedule = lecturer.schedules.find((s) => {
+          const { start_time, end_time } = s.time_slot
+          return currentTime >= start_time && currentTime <= end_time
+        })
+
+        // Tentukan apakah dosen ini "milik" ruangan ini lewat jadwal atau home room
+        const isInRoomBySchedule = activeSchedule?.room_id === room_id
+        
+        let roomType = 'HOME'
+        let courseName = null
+
+        if (isInRoomBySchedule) {
+          roomType = 'SCHEDULED'
+          courseName = activeSchedule.course.name
+        }
+
+        const latestAttendance = lecturer.attendances[0]
+
+        return {
+          id: lecturer.id,
+          name: lecturer.user?.name,
+          nip: lecturer.nip,
+          status: lecturer.status, // AVAILABLE, BUSY, OFFLINE
+          room_type: roomType,
+          course: courseName,
+          present_since: latestAttendance ? latestAttendance.check_in_at : null
+        }
+      })
+
+      return success(res, 'success', formatted)
     } catch (err) {
       return error(res, err.message, 500)
     }

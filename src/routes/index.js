@@ -3,6 +3,7 @@ const router = express.Router()
 const userRoutes = require('../modules/users/user.routes')
 const lecturerRoutes = require('../modules/lecturers/lecturer.routes')
 const authRoutes = require('../modules/auth/auth.routes')
+const lecturerController = require('../modules/lecturers/lecturer.controller')
 const { authMiddleware } = require('../common/middlewares/auth.middleware')
 const roleRoutes = require('../modules/roles/role.routes')
 const permissionRoutes = require('../modules/permissions/permission.routes')
@@ -20,6 +21,7 @@ const faceRecognitionRoutes = require('../modules/face-recognition/face-recognit
 const sensorRoutes = require('../modules/sensors/sensor.routes')
 
 router.use('/auth', authRoutes)
+router.get('/dashboard/lecturers', lecturerController.getPublicLecturers)
 
 router.use('/users', authMiddleware, userRoutes)
 router.use('/lecturers', authMiddleware, lecturerRoutes)
