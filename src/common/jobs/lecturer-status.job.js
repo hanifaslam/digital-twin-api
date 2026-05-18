@@ -4,10 +4,26 @@ const prisma = require('../../config/prisma')
 const { getIO } = require('../../config/socket')
 const { getJakartaTime } = require('../../utils/date')
 
+const getJakartaDayStart = () => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Jakarta',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date())
+
+  const year = parts.find((p) => p.type === 'year')?.value
+  const month = parts.find((p) => p.type === 'month')?.value
+  const day = parts.find((p) => p.type === 'day')?.value
+
+  return new Date(`${year}-${month}-${day}T00:00:00+07:00`)
+}
+
 const syncLecturerAvailability = async () => {
   console.log('[Cron] Checking lecturer status & schedule transitions...')
   try {
     const now = new Date()
+    const jakartaDayStart = getJakartaDayStart()
     const daysMap = {
       1: Day.MONDAY,
       2: Day.TUESDAY,
@@ -22,30 +38,39 @@ const syncLecturerAvailability = async () => {
       ':' +
       minutes.toString().padStart(2, '0')
 
-    // Ambil semua dosen yang sedang standby (punya FaceData)
+    // Ambil semua dosen agar status dashboard selalu tersinkron,
+    // tidak bergantung pada apakah dosen sudah registrasi face data.
     const lecturers = await prisma.lecturer.findMany({
-      where: { face_data: { isNot: null } },
       include: {
         schedules: {
-          where: { 
+          where: {
             day: currentDay || undefined, // Jika weekend (null), jangan filter berdasarkan hari ini (atau skip)
-            status: true 
+            status: true
           },
           include: { time_slot: true }
+        },
+        attendances: {
+          where: {
+            check_in_at: {
+              gte: jakartaDayStart
+            }
+          },
+          take: 1
         }
       }
     })
 
     for (const lecturer of lecturers) {
-      // 1. Hitung Status Otomatis IDEAL saat ini berdasarkan jadwal
-      let expectedAutoStatus = 'AVAILABLE'
+      // 1. Hitung Status Otomatis berdasarkan jadwal aktif + attendance hari ini
       const activeSchedule = lecturer.schedules.find((s) => {
         const { start_time, end_time } = s.time_slot
         return currentTime >= start_time && currentTime <= end_time
       })
+      const hasAttendanceToday = lecturer.attendances.length > 0
 
-      if (activeSchedule) {
-        expectedAutoStatus = 'BUSY'
+      let expectedAutoStatus = 'OFFLINE'
+      if (hasAttendanceToday) {
+        expectedAutoStatus = activeSchedule ? 'BUSY' : 'AVAILABLE'
       }
 
       // 2. DETEKSI TRANSISI (Logika Inti Opsi 3)
@@ -108,11 +133,11 @@ const syncLecturerAvailability = async () => {
   }
 }
 
-// Jalankan setiap 10 menit
+// Jalankan setiap 1 menit
 const startLecturerStatusJob = () => {
   // Pattern: minute hour day-of-month month day-of-week
-  // */10 means every 10 minutes
-  cron.schedule('*/10 * * * *', syncLecturerAvailability)
+  // * means every minute
+  cron.schedule('* * * * *', syncLecturerAvailability)
 
   // Jalankan sekali saat startup untuk inisialisasi awal
   syncLecturerAvailability()

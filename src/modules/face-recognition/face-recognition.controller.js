@@ -297,25 +297,6 @@ const faceRecognitionController = {
         }
       }
 
-      // --- UPDATE STATUS DOSEN ---
-      const isWeekend = dayIndex === 0 || dayIndex === 6
-      let availableStatus = !isWeekend
-
-      // Jika ada jadwal aktif sekarang, status otomatis BUSY
-      if (activeSchedule) {
-        availableStatus = false
-      }
-
-      const updated = await prisma.lecturer.update({
-        where: { id: lecturerId },
-        data: {
-          status: availableStatus ? 'AVAILABLE' : 'BUSY',
-          is_manual: false,
-          overridden_at: null,
-          last_auto_status: availableStatus ? 'AVAILABLE' : 'BUSY'
-        }
-      })
-
       try {
         await prisma.attendance.create({
           data: {
@@ -326,6 +307,21 @@ const faceRecognitionController = {
       } catch (e) {
         console.error('Attendance Logging Error:', e.message)
       }
+
+      // --- UPDATE STATUS DOSEN ---
+      // Setelah attendance tercatat:
+      // - Jika sedang ada jadwal aktif => BUSY
+      // - Selain itu => AVAILABLE
+      const nextStatus = activeSchedule ? 'BUSY' : 'AVAILABLE'
+      const updated = await prisma.lecturer.update({
+        where: { id: lecturerId },
+        data: {
+          status: nextStatus,
+          is_manual: false,
+          overridden_at: null,
+          last_auto_status: nextStatus
+        }
+      })
 
       // Emit socket event so the dashboard Updates for everyone
       try {

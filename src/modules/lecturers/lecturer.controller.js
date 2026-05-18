@@ -450,30 +450,43 @@ const lecturerController = {
 
       const lecturers = await prisma.lecturer.findMany({
         where: {
-          OR: [
+          AND: [
             {
-              // Dosen yang sedang mengajar di ruangan ini sekarang
-              schedules: {
-                some: {
-                  room_id: room_id,
-                  day: currentDay || undefined,
-                  status: true,
-                  time_slot: {
-                    start_time: { lte: currentTime },
-                    end_time: { gte: currentTime }
+              user: {
+                role: {
+                  code: {
+                    notIn: ['SA', 'SUPER_ADMIN', 'AD']
                   }
                 }
               }
             },
             {
-              // Dosen yang ruangan aslinya (home room) adalah ruangan ini
-              study_programs: {
-                some: {
-                  study_program: {
-                    home_room_id: room_id
+              OR: [
+                {
+                  // Dosen yang sedang mengajar di ruangan ini sekarang
+                  schedules: {
+                    some: {
+                      room_id: room_id,
+                      day: currentDay || undefined,
+                      status: true,
+                      time_slot: {
+                        start_time: { lte: currentTime },
+                        end_time: { gte: currentTime }
+                      }
+                    }
+                  }
+                },
+                {
+                  // Dosen yang ruangan aslinya (home room) adalah ruangan ini
+                  study_programs: {
+                    some: {
+                      study_program: {
+                        home_room_id: room_id
+                      }
+                    }
                   }
                 }
-              }
+              ]
             }
           ]
         },
@@ -538,7 +551,7 @@ const lecturerController = {
 
         // Tentukan apakah dosen ini "milik" ruangan ini lewat jadwal atau home room
         const isInRoomBySchedule = activeSchedule?.room_id === room_id
-        
+
         let roomType = 'HOME'
         let courseName = null
 
@@ -558,6 +571,23 @@ const lecturerController = {
           course: courseName,
           present_since: latestAttendance ? latestAttendance.check_in_at : null
         }
+      })
+
+      const statusPriority = {
+        AVAILABLE: 0,
+        BUSY: 1,
+        OFFLINE: 2
+      }
+
+      formattedLecturers.sort((a, b) => {
+        const statusDiff =
+          (statusPriority[a.status] ?? Number.MAX_SAFE_INTEGER) -
+          (statusPriority[b.status] ?? Number.MAX_SAFE_INTEGER)
+
+        if (statusDiff !== 0) return statusDiff
+        return (a.name || '').localeCompare(b.name || '', 'id', {
+          sensitivity: 'base'
+        })
       })
 
       return success(res, 'success', formattedLecturers)
