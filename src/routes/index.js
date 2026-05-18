@@ -20,6 +20,7 @@ const masterClassRoutes = require('../modules/classes/class.routes')
 const scheduleRoutes = require('../modules/schedules/schedule.routes')
 const faceRecognitionRoutes = require('../modules/face-recognition/face-recognition.routes')
 const sensorRoutes = require('../modules/sensors/sensor.routes')
+const dashboardRoutes = require('../modules/dashboard/dashboard.routes')
 
 router.use('/auth', authRoutes)
 router.get('/dashboard/rooms/:id', roomController.getPublicRoomInfo)
@@ -42,5 +43,6 @@ router.use('/classes', authMiddleware, masterClassRoutes)
 router.use('/schedules', authMiddleware, scheduleRoutes)
 router.use('/face-recognition', authMiddleware, faceRecognitionRoutes)
 router.use('/sensors', sensorRoutes)
+router.use('/dashboard', authMiddleware, dashboardRoutes)
 
 module.exports = router
