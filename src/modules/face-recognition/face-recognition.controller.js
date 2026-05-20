@@ -364,10 +364,10 @@ const faceRecognitionController = {
 
       const now = new Date()
       const dayIndex = now.getDay()
-      const hour = now.getHours()
+      const { hours: jakartaHour } = getJakartaTime(now)
 
       const isWeekend = dayIndex === 0 || dayIndex === 6
-      const timeAllowed = hour >= 7
+      const timeAllowed = jakartaHour >= 7
 
       // Check if already attended today
       const today = new Date()
