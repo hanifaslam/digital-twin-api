@@ -1,6 +1,14 @@
 const mqtt = require('mqtt')
 const prisma = require('./prisma')
-const { getIO } = require('./socket')
+const {
+  getIO,
+  emitEnergyMonitoringUpdate,
+  emitDeviceLiveSummaryUpdate
+} = require('./socket')
+const {
+  buildDeviceLiveSummary,
+  buildEnergyMonitoringSummary
+} = require('../modules/dashboard/dashboard.controller')
 
 let client = null
 let pingInterval = null
@@ -29,6 +37,15 @@ const emitDeviceTelemetry = (payload) => {
     getIO().emit('device-telemetry', payload)
   } catch (ioError) {
     // Silently fail if socket is not initialized
+  }
+}
+
+const emitLatestDeviceLiveSummary = async () => {
+  try {
+    const summary = await buildDeviceLiveSummary(null)
+    emitDeviceLiveSummaryUpdate(summary)
+  } catch (err) {
+    console.error('[MQTT] Device live summary emit error:', err.message)
   }
 }
 
@@ -142,6 +159,7 @@ const initMQTT = () => {
             where: { id: device.id },
             data: { is_on: isOn, last_seen_at: now }
           })
+          await emitLatestDeviceLiveSummary()
           
           // Emit selalu dilakukan agar semua tab (Web 1, Web 2) tersinkronisasi
           try {
@@ -194,6 +212,18 @@ const initMQTT = () => {
             data: sensorData
           })
 
+          const room = await prisma.room.findUnique({
+            where: { id: device.room_id },
+            select: { building_id: true }
+          })
+
+          await emitLatestDeviceLiveSummary()
+
+          if (room?.building_id) {
+            const summary = await buildEnergyMonitoringSummary(room.building_id)
+            emitEnergyMonitoringUpdate(room.building_id, summary)
+          }
+
           // Emit real-time update via Socket.io
           try {
             getIO().emit('sensor-data', {
@@ -231,6 +261,7 @@ const initMQTT = () => {
             },
             data: { is_online: isOnline, last_seen_at: now }
           })
+          await emitLatestDeviceLiveSummary()
 
           devices.forEach(device => {
             try {
@@ -264,6 +295,7 @@ const initMQTT = () => {
               last_seen_at: now
             }
           })
+          await emitLatestDeviceLiveSummary()
 
           devices.forEach((device) => {
             emitDeviceTelemetry({
@@ -311,6 +343,7 @@ const initMQTT = () => {
               last_latency_ms: latencyMs
             }
           })
+          await emitLatestDeviceLiveSummary()
 
           devices.forEach((device) => {
             emitDeviceTelemetry({

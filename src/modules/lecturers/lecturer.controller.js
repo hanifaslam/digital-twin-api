@@ -429,6 +429,7 @@ const lecturerController = {
   getPublicLecturers: async (req, res) => {
     try {
       const { id: room_id } = req.params
+      const search = req.query?.q?.trim()
       if (!room_id) {
         return error(res, 'room_id path parameter is required', 400)
       }
@@ -487,7 +488,50 @@ const lecturerController = {
                   }
                 }
               ]
-            }
+            },
+            ...(search
+              ? [
+                  {
+                    OR: [
+                      {
+                        user: {
+                          name: {
+                            contains: search,
+                            mode: 'insensitive'
+                          }
+                        }
+                      },
+                      {
+                        nip: {
+                          contains: search,
+                          mode: 'insensitive'
+                        }
+                      },
+                      {
+                        status: {
+                          contains: search,
+                          mode: 'insensitive'
+                        }
+                      },
+                      {
+                        schedules: {
+                          some: {
+                            room_id: room_id,
+                            day: currentDay || undefined,
+                            status: true,
+                            course: {
+                              name: {
+                                contains: search,
+                                mode: 'insensitive'
+                              }
+                            }
+                          }
+                        }
+                      }
+                    ]
+                  }
+                ]
+              : [])
           ]
         },
         include: {

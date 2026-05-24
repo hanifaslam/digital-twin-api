@@ -459,6 +459,11 @@ const roomController = {
         5: Day.FRIDAY
       }
       const currentDay = daysMap[now.getDay()]
+      const { hours, minutes } = getJakartaTime(now)
+      const currentTime =
+        hours.toString().padStart(2, '0') +
+        ':' +
+        minutes.toString().padStart(2, '0')
 
       const schedules = await prisma.schedule.findMany({
         where: {
@@ -469,6 +474,9 @@ const roomController = {
         include: {
           course: {
             select: { name: true, code: true }
+          },
+          class: {
+            select: { id: true, name: true }
           },
           time_slot: {
             select: { start_time: true, end_time: true }
@@ -492,8 +500,13 @@ const roomController = {
         id: s.id,
         course_name: s.course.name,
         course_code: s.course.code,
+        class_id: s.class?.id || null,
+        class_name: s.class?.name || null,
         start_time: s.time_slot.start_time,
         end_time: s.time_slot.end_time,
+        is_online:
+          currentTime >= s.time_slot.start_time &&
+          currentTime <= s.time_slot.end_time,
         lecturer_name: s.lecturer.user?.name || 'N/A'
       }))
 

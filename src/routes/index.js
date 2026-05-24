@@ -11,6 +11,7 @@ const permissionRoutes = require('../modules/permissions/permission.routes')
 const studyProgramRoutes = require('../modules/study-programs/study-program.routes')
 const roomRoutes = require('../modules/rooms/room.routes')
 const buildingRoutes = require('../modules/buildings/building.routes')
+const buildingController = require('../modules/buildings/building.controller')
 const deviceRoutes = require('../modules/devices/device.routes')
 const masterFloorRoutes = require('../modules/floors/floor.routes')
 const courseRoutes = require('../modules/courses/course.routes')
@@ -23,8 +24,12 @@ const sensorRoutes = require('../modules/sensors/sensor.routes')
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes')
 
 router.use('/auth', authRoutes)
+router.get('/dashboard/buildings', buildingController.getAllBuildings)
 router.get('/dashboard/rooms/:id', roomController.getPublicRoomInfo)
-router.get('/dashboard/rooms/:id/lecturers', lecturerController.getPublicLecturers)
+router.get(
+  '/dashboard/rooms/:id/lecturers',
+  lecturerController.getPublicLecturers
+)
 router.get('/dashboard/rooms/:id/schedules', roomController.getPublicSchedules)
 
 router.use('/users', authMiddleware, userRoutes)

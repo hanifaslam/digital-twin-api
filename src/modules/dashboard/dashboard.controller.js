@@ -92,6 +92,14 @@ const formatLatencyLabel = (latencyMs) => {
   return `${latencyMs} ms`
 }
 
+const roundNumber = (value, digits = 1) => {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) {
+    return 0
+  }
+
+  return Number(Number(value).toFixed(digits))
+}
+
 const getMondayOfCurrentWeek = (currentDate) => {
   const monday = new Date(currentDate)
   const weekday = monday.getUTCDay()
@@ -139,50 +147,261 @@ const buildScopedWhere = (buildingIds, extraWhere = {}) => ({
     : {})
 })
 
+const resolveSelectedBuilding = async (user, requestedBuildingId) => {
+  const scopedBuildingIds = await getScopedBuildingIds(user)
+
+  const buildingWhere = Array.isArray(scopedBuildingIds)
+    ? { id: { in: scopedBuildingIds.length ? scopedBuildingIds : [''] } }
+    : { status: true }
+
+  const buildings = await prisma.building.findMany({
+    where: buildingWhere,
+    select: {
+      id: true,
+      name: true
+    },
+    orderBy: { name: 'asc' }
+  })
+
+  const selectedBuilding =
+    requestedBuildingId && buildings.some((item) => item.id === requestedBuildingId)
+      ? buildings.find((item) => item.id === requestedBuildingId)
+      : buildings[0] || null
+
+  return {
+    scopedBuildingIds,
+    buildings,
+    selectedBuilding
+  }
+}
+
+const buildDeviceLiveSummary = async (buildingIds = null) => {
+  const [activeDevices, lastSeenDevice, latencyAggregate] = await Promise.all([
+    prisma.device.count({
+      where: buildScopedWhere(buildingIds, {
+        status: true,
+        is_online: true
+      })
+    }),
+    prisma.device.findFirst({
+      where: buildScopedWhere(buildingIds, {
+        status: true,
+        last_seen_at: { not: null }
+      }),
+      orderBy: { last_seen_at: 'desc' },
+      select: { id: true, name: true, last_seen_at: true }
+    }),
+    prisma.device.aggregate({
+      where: buildScopedWhere(buildingIds, {
+        status: true,
+        is_online: true,
+        last_latency_ms: { not: null }
+      }),
+      _avg: {
+        last_latency_ms: true
+      }
+    })
+  ])
+
+  const latencyMs =
+    latencyAggregate._avg.last_latency_ms === null
+      ? null
+      : Math.round(latencyAggregate._avg.last_latency_ms)
+
+  return {
+    active_devices: activeDevices,
+    latency_ms: latencyMs,
+    latency: formatLatencyLabel(latencyMs),
+    last_sync: formatSyncLabel(lastSeenDevice?.last_seen_at)
+  }
+}
+
+const buildEnergyMonitoringSummary = async (buildingId) => {
+  if (!buildingId) {
+    return {
+      building_id: null,
+      building_name: null,
+      has_live_data: false,
+      current_active_demand_watts: 0,
+      current_active_demand_label: '0 W',
+      change_percent_vs_average: 0,
+      trend_window_seconds: 40,
+      trend: [],
+      last_updated_at: null
+    }
+  }
+
+  const building = await prisma.building.findUnique({
+    where: { id: buildingId },
+    select: {
+      id: true,
+      name: true,
+      status: true
+    }
+  })
+
+  if (!building || !building.status) {
+    return {
+      building_id: buildingId,
+      building_name: null,
+      has_live_data: false,
+      current_active_demand_watts: 0,
+      current_active_demand_label: '0 W',
+      change_percent_vs_average: 0,
+      trend_window_seconds: 40,
+      trend: [],
+      last_updated_at: null
+    }
+  }
+
+  const now = Date.now()
+  const windowSeconds = 40
+  const bucketSeconds = 5
+  const bucketCount = windowSeconds / bucketSeconds
+  const windowStart = new Date(now - windowSeconds * 1000)
+
+  const rooms = await prisma.room.findMany({
+    where: {
+      building_id: building.id,
+      status: true
+    },
+    select: {
+      id: true
+    }
+  })
+
+  if (rooms.length === 0) {
+    return {
+      building_id: building.id,
+      building_name: building.name,
+      has_live_data: false,
+      current_active_demand_watts: 0,
+      current_active_demand_label: '0 W',
+      change_percent_vs_average: 0,
+      trend_window_seconds: windowSeconds,
+      trend: [],
+      last_updated_at: null
+    }
+  }
+
+  const roomIds = rooms.map((room) => room.id)
+
+  const [recentLogs, latestLogsPerRoom] = await Promise.all([
+    prisma.sensorLog.findMany({
+      where: {
+        room_id: { in: roomIds },
+        created_at: {
+          gte: windowStart
+        },
+        power: { not: null }
+      },
+      select: {
+        room_id: true,
+        power: true,
+        created_at: true
+      },
+      orderBy: { created_at: 'asc' }
+    }),
+    Promise.all(
+      roomIds.map((roomId) =>
+        prisma.sensorLog.findFirst({
+          where: {
+            room_id: roomId,
+            power: { not: null }
+          },
+          select: {
+            room_id: true,
+            power: true,
+            created_at: true
+          },
+          orderBy: { created_at: 'desc' }
+        })
+      )
+    )
+  ])
+
+  const bucketMap = new Map()
+
+  for (let i = 0; i < bucketCount; i += 1) {
+    const bucketTime = now - (bucketCount - 1 - i) * bucketSeconds * 1000
+    const bucketKey = Math.floor(bucketTime / (bucketSeconds * 1000))
+    bucketMap.set(bucketKey, {
+      ts: new Date(bucketKey * bucketSeconds * 1000),
+      total_power: 0
+    })
+  }
+
+  recentLogs.forEach((log) => {
+    const bucketKey = Math.floor(
+      new Date(log.created_at).getTime() / (bucketSeconds * 1000)
+    )
+
+    if (bucketMap.has(bucketKey)) {
+      const current = bucketMap.get(bucketKey)
+      current.total_power += Number(log.power || 0)
+    }
+  })
+
+  const trend = [...bucketMap.values()].map((item) => ({
+    timestamp: item.ts.toISOString(),
+    total_power: roundNumber(item.total_power, 1)
+  }))
+
+  const currentActiveDemandWatts = roundNumber(
+    latestLogsPerRoom.reduce((sum, log) => sum + Number(log?.power || 0), 0),
+    1
+  )
+
+  const trendAverage =
+    trend.length > 0
+      ? trend.reduce((sum, item) => sum + item.total_power, 0) / trend.length
+      : 0
+
+  const changePercentVsAverage =
+    trendAverage === 0
+      ? 0
+      : roundNumber(
+          ((currentActiveDemandWatts - trendAverage) / trendAverage) * 100,
+          1
+        )
+
+  const latestLog = latestLogsPerRoom
+    .filter(Boolean)
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
+
+  return {
+    building_id: building.id,
+    building_name: building.name,
+    has_live_data: Boolean(latestLog),
+    current_active_demand_watts: currentActiveDemandWatts,
+    current_active_demand_label: `${roundNumber(currentActiveDemandWatts, 0)} W`,
+    change_percent_vs_average: changePercentVsAverage,
+    trend_window_seconds: windowSeconds,
+    trend,
+    last_updated_at: latestLog?.created_at?.toISOString?.() || null
+  }
+}
+
 const dashboardController = {
   getDeviceLiveSummary: async (req, res) => {
     try {
       const buildingIds = await getScopedBuildingIds(req.user)
+      const summary = await buildDeviceLiveSummary(buildingIds)
+      return success(res, 'success', summary)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
 
-      const [activeDevices, lastSeenDevice, latencyAggregate] =
-        await Promise.all([
-          prisma.device.count({
-            where: buildScopedWhere(buildingIds, {
-              status: true,
-              is_online: true
-            })
-          }),
-          prisma.device.findFirst({
-            where: buildScopedWhere(buildingIds, {
-              status: true,
-              last_seen_at: { not: null }
-            }),
-            orderBy: { last_seen_at: 'desc' },
-            select: { id: true, name: true, last_seen_at: true }
-          }),
-          prisma.device.aggregate({
-            where: buildScopedWhere(buildingIds, {
-              status: true,
-              is_online: true,
-              last_latency_ms: { not: null }
-            }),
-            _avg: {
-              last_latency_ms: true
-            }
-          })
-        ])
-
-      const latencyMs =
-        latencyAggregate._avg.last_latency_ms === null
-          ? null
-          : Math.round(latencyAggregate._avg.last_latency_ms)
-
-      return success(res, 'success', {
-        active_devices: activeDevices,
-        latency_ms: latencyMs,
-        latency: formatLatencyLabel(latencyMs),
-        last_sync: formatSyncLabel(lastSeenDevice?.last_seen_at)
-      })
+  getEnergyMonitoringSummary: async (req, res) => {
+    try {
+      const requestedBuildingId = (req.query?.building_id || '').trim()
+      const { selectedBuilding } = await resolveSelectedBuilding(
+        req.user,
+        requestedBuildingId
+      )
+      const summary = await buildEnergyMonitoringSummary(selectedBuilding?.id || null)
+      return success(res, 'success', summary)
     } catch (err) {
       return error(res, err.message, 500)
     }
@@ -737,4 +956,8 @@ const dashboardController = {
   }
 }
 
-module.exports = dashboardController
+module.exports = {
+  ...dashboardController,
+  buildDeviceLiveSummary,
+  buildEnergyMonitoringSummary
+}
