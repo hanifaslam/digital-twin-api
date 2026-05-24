@@ -3,6 +3,8 @@ const { Day } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 const { getIO } = require('../../config/socket')
 const { getJakartaTime } = require('../../utils/date')
+const { addActivityLog } = require('../activity-log')
+const { emitActivityLogUpdate } = require('../../config/socket')
 
 const getJakartaDayStart = () => {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -128,6 +130,12 @@ const syncLecturerAvailability = async () => {
         }
       }
     }
+
+    const item = addActivityLog({
+      category: 'PRESENCE',
+      message: 'Lecturer availability status updated.'
+    })
+    emitActivityLogUpdate(item)
   } catch (error) {
     console.error('[Cron Error] Sync Lecturer Status:', error)
   }

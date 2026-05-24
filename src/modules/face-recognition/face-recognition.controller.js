@@ -6,6 +6,8 @@ const s3 = require('../../config/s3')
 const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3')
 const { getIO } = require('../../config/socket')
 const { formatTime, getJakartaTime } = require('../../utils/date')
+const { addActivityLog } = require('../../common/activity-log')
+const { emitActivityLogUpdate } = require('../../config/socket')
 
 const FACE_SERVICE_URL = process.env.FACE_SERVICE_URL || 'http://localhost:8000'
 const SIMILARITY_THRESHOLD = parseFloat(
@@ -333,6 +335,13 @@ const faceRecognitionController = {
       } catch (e) {
         console.error('Socket Emit Error (Face Verification):', e.message)
       }
+
+      emitActivityLogUpdate(
+        addActivityLog({
+          category: 'PRESENCE',
+          message: `${updated.status === 'BUSY' ? 'Lecturer check-in confirmed for active class.' : 'Lecturer check-in recorded and marked available.'}`
+        })
+      )
 
       return success(res, 'Face verified', {
         lecturer_id: lecturerId,

@@ -1,6 +1,7 @@
 const { Day } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const { getActivityLogs } = require('../../common/activity-log')
 
 const DAY_ORDER = [Day.MONDAY, Day.TUESDAY, Day.WEDNESDAY, Day.THURSDAY, Day.FRIDAY]
 
@@ -388,6 +389,15 @@ const dashboardController = {
       const buildingIds = await getScopedBuildingIds(req.user)
       const summary = await buildDeviceLiveSummary(buildingIds)
       return success(res, 'success', summary)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  getLiveActivityLog: async (req, res) => {
+    try {
+      const limit = req.query?.limit || 20
+      return success(res, 'success', getActivityLogs(limit))
     } catch (err) {
       return error(res, err.message, 500)
     }

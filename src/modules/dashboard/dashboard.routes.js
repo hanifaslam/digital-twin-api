@@ -5,6 +5,7 @@ const router = express.Router()
 
 router.get('/summary-cards', dashboardController.getSummaryCards)
 router.get('/device-live-summary', dashboardController.getDeviceLiveSummary)
+router.get('/live-activity-log', dashboardController.getLiveActivityLog)
 router.get('/energy-monitoring-summary', dashboardController.getEnergyMonitoringSummary)
 router.get('/weekly-attendance', dashboardController.getWeeklyAttendanceOverview)
 router.get('/live-ongoing-classes', dashboardController.getLiveOngoingClasses)

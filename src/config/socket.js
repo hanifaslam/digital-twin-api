@@ -68,9 +68,16 @@ const emitDeviceLiveSummaryUpdate = (payload) => {
   io.emit('device-live-summary:update', payload)
 }
 
+const emitActivityLogUpdate = (payload) => {
+  if (!io) return
+
+  io.emit('activity-log:update', payload)
+}
+
 module.exports = {
   initSocket,
   getIO,
   emitEnergyMonitoringUpdate,
-  emitDeviceLiveSummaryUpdate
+  emitDeviceLiveSummaryUpdate,
+  emitActivityLogUpdate
 }

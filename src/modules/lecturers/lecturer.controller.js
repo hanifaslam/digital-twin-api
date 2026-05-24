@@ -5,6 +5,8 @@ const { buildPagination } = require('../../utils/pagination')
 const { getIO } = require('../../config/socket')
 const { Day } = require('@prisma/client')
 const { getJakartaTime } = require('../../utils/date')
+const { addActivityLog } = require('../../common/activity-log')
+const { emitActivityLogUpdate } = require('../../config/socket')
 
 const normalizeStudyProgramIds = (studyProgramIds) => [
   ...new Set((studyProgramIds || []).map((id) => id?.trim()).filter(Boolean))
@@ -419,6 +421,13 @@ const lecturerController = {
       } catch (e) {
         console.error('Socket Emit Error:', e.message)
       }
+
+      emitActivityLogUpdate(
+        addActivityLog({
+          category: 'PRESENCE',
+          message: `Lecturer status manually set to ${updated.status}.`
+        })
+      )
 
       return success(res, `success`, null)
     } catch (err) {

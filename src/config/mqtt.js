@@ -3,12 +3,14 @@ const prisma = require('./prisma')
 const {
   getIO,
   emitEnergyMonitoringUpdate,
-  emitDeviceLiveSummaryUpdate
+  emitDeviceLiveSummaryUpdate,
+  emitActivityLogUpdate
 } = require('./socket')
 const {
   buildDeviceLiveSummary,
   buildEnergyMonitoringSummary
 } = require('../modules/dashboard/dashboard.controller')
+const { addActivityLog } = require('../common/activity-log')
 
 let client = null
 let pingInterval = null
@@ -47,6 +49,11 @@ const emitLatestDeviceLiveSummary = async () => {
   } catch (err) {
     console.error('[MQTT] Device live summary emit error:', err.message)
   }
+}
+
+const pushActivityLog = (entry) => {
+  const item = addActivityLog(entry)
+  emitActivityLogUpdate(item)
 }
 
 const sendDevicePings = async () => {
@@ -137,11 +144,12 @@ const initMQTT = () => {
     })
   })
 
-  client.on('message', async (topic, message) => {
+  client.on('message', async (topic, message, packet) => {
     try {
       const rawMessage = message.toString()
       const payload = rawMessage.toLowerCase()
       const now = new Date()
+      const isRetainedMessage = Boolean(packet?.retain)
       
       // Expected pattern: any/custom/topic/status
       if (topic.endsWith('/status')) {
@@ -160,6 +168,12 @@ const initMQTT = () => {
             data: { is_on: isOn, last_seen_at: now }
           })
           await emitLatestDeviceLiveSummary()
+          if (!isRetainedMessage) {
+            pushActivityLog({
+              category: 'DEVICE',
+              message: `${device.name} switched ${isOn ? 'ON' : 'OFF'}.`
+            })
+          }
           
           // Emit selalu dilakukan agar semua tab (Web 1, Web 2) tersinkronisasi
           try {
@@ -223,6 +237,10 @@ const initMQTT = () => {
             const summary = await buildEnergyMonitoringSummary(room.building_id)
             emitEnergyMonitoringUpdate(room.building_id, summary)
           }
+          pushActivityLog({
+            category: 'TELEMETRY',
+            message: `Power load updated to ${Math.round(Number(sensorData.power || 0))}W from ${device.name}.`
+          })
 
           // Emit real-time update via Socket.io
           try {
@@ -262,6 +280,12 @@ const initMQTT = () => {
             data: { is_online: isOnline, last_seen_at: now }
           })
           await emitLatestDeviceLiveSummary()
+          if (!isRetainedMessage) {
+            pushActivityLog({
+              category: 'GATEWAY',
+              message: `${availabilityTopic} gateway ${isOnline ? 'connected' : 'disconnected'}.`
+            })
+          }
 
           devices.forEach(device => {
             try {
@@ -344,6 +368,10 @@ const initMQTT = () => {
             }
           })
           await emitLatestDeviceLiveSummary()
+          pushActivityLog({
+            category: 'DEVICE',
+            message: `Latency refreshed at ${latencyMs} ms for ${devices[0]?.name || 'device network'}.`
+          })
 
           devices.forEach((device) => {
             emitDeviceTelemetry({

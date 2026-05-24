@@ -22,9 +22,16 @@ const scheduleRoutes = require('../modules/schedules/schedule.routes')
 const faceRecognitionRoutes = require('../modules/face-recognition/face-recognition.routes')
 const sensorRoutes = require('../modules/sensors/sensor.routes')
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes')
+const dashboardController = require('../modules/dashboard/dashboard.controller')
 
 router.use('/auth', authRoutes)
 router.get('/dashboard/buildings', buildingController.getAllBuildings)
+router.get('/dashboard/device-live-summary', dashboardController.getDeviceLiveSummary)
+router.get(
+  '/dashboard/energy-monitoring-summary',
+  dashboardController.getEnergyMonitoringSummary
+)
+router.get('/dashboard/live-activity-log', dashboardController.getLiveActivityLog)
 router.get('/dashboard/rooms/:id', roomController.getPublicRoomInfo)
 router.get(
   '/dashboard/rooms/:id/lecturers',
