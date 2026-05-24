@@ -71,6 +71,27 @@ const getJakartaMonthRange = (year, month) => {
   return { start, end }
 }
 
+const formatSyncLabel = (date) => {
+  if (!date) return 'No Data'
+
+  const diffMs = Date.now() - new Date(date).getTime()
+  const diffSeconds = Math.max(Math.floor(diffMs / 1000), 0)
+
+  if (diffSeconds <= 30) return 'Live'
+
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: 'Asia/Jakarta',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(new Date(date))
+}
+
+const formatLatencyLabel = (latencyMs) => {
+  if (latencyMs === null || latencyMs === undefined) return '--'
+  return `${latencyMs} ms`
+}
+
 const getMondayOfCurrentWeek = (currentDate) => {
   const monday = new Date(currentDate)
   const weekday = monday.getUTCDay()
@@ -119,6 +140,54 @@ const buildScopedWhere = (buildingIds, extraWhere = {}) => ({
 })
 
 const dashboardController = {
+  getDeviceLiveSummary: async (req, res) => {
+    try {
+      const buildingIds = await getScopedBuildingIds(req.user)
+
+      const [activeDevices, lastSeenDevice, latencyAggregate] =
+        await Promise.all([
+          prisma.device.count({
+            where: buildScopedWhere(buildingIds, {
+              status: true,
+              is_online: true
+            })
+          }),
+          prisma.device.findFirst({
+            where: buildScopedWhere(buildingIds, {
+              status: true,
+              last_seen_at: { not: null }
+            }),
+            orderBy: { last_seen_at: 'desc' },
+            select: { id: true, name: true, last_seen_at: true }
+          }),
+          prisma.device.aggregate({
+            where: buildScopedWhere(buildingIds, {
+              status: true,
+              is_online: true,
+              last_latency_ms: { not: null }
+            }),
+            _avg: {
+              last_latency_ms: true
+            }
+          })
+        ])
+
+      const latencyMs =
+        latencyAggregate._avg.last_latency_ms === null
+          ? null
+          : Math.round(latencyAggregate._avg.last_latency_ms)
+
+      return success(res, 'success', {
+        active_devices: activeDevices,
+        latency_ms: latencyMs,
+        latency: formatLatencyLabel(latencyMs),
+        last_sync: formatSyncLabel(lastSeenDevice?.last_seen_at)
+      })
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
   getSummaryCards: async (req, res) => {
     try {
       const { parts, currentDay, currentTime } = getCurrentContext()

@@ -3,6 +3,94 @@ const prisma = require('./prisma')
 const { getIO } = require('./socket')
 
 let client = null
+let pingInterval = null
+let pingSequence = 0
+
+const PING_INTERVAL_MS = Number(process.env.MQTT_PING_INTERVAL_MS || 15000)
+const pingRequests = new Map()
+
+const markDeviceSeen = async (where) => {
+  await prisma.device.updateMany({
+    where,
+    data: { last_seen_at: new Date() }
+  })
+}
+
+const tryParseJson = (value) => {
+  try {
+    return JSON.parse(value)
+  } catch (err) {
+    return null
+  }
+}
+
+const emitDeviceTelemetry = (payload) => {
+  try {
+    getIO().emit('device-telemetry', payload)
+  } catch (ioError) {
+    // Silently fail if socket is not initialized
+  }
+}
+
+const sendDevicePings = async () => {
+  if (!client || !client.connected) return
+
+  try {
+    const devices = await prisma.device.findMany({
+      where: {
+        status: true,
+        mqtt_topic: { not: null }
+      },
+      select: {
+        id: true,
+        mqtt_topic: true
+      }
+    })
+
+    const now = Date.now()
+
+    devices.forEach((device) => {
+      if (!device.mqtt_topic) return
+
+      const pingId = `${device.id}-${now}-${pingSequence++}`
+      const payload = {
+        ping_id: pingId,
+        sent_at: now
+      }
+
+      pingRequests.set(pingId, {
+        deviceId: device.id,
+        mqttTopic: device.mqtt_topic,
+        sentAt: now
+      })
+
+      client.publish(
+        `${device.mqtt_topic}/ping`,
+        JSON.stringify(payload),
+        { qos: 1 }
+      )
+    })
+
+    const cutoff = now - PING_INTERVAL_MS * 3
+    for (const [pingId, request] of pingRequests.entries()) {
+      if (request.sentAt < cutoff) {
+        pingRequests.delete(pingId)
+      }
+    }
+  } catch (err) {
+    console.error('[MQTT] Ping scheduler error:', err.message)
+  }
+}
+
+const ensurePingScheduler = () => {
+  if (pingInterval) return
+
+  pingInterval = setInterval(() => {
+    sendDevicePings().catch((err) => {
+      console.error('[MQTT] Ping interval error:', err.message)
+    })
+  }, PING_INTERVAL_MS)
+}
 
 const initMQTT = () => {
   if (client) return client
@@ -26,11 +114,17 @@ const initMQTT = () => {
     client.subscribe('#', { qos: 1 }, (err) => {
       if (!err) console.log('MQTT Subscribed to all topics (#)')
     })
+    ensurePingScheduler()
+    sendDevicePings().catch((err) => {
+      console.error('[MQTT] Initial ping error:', err.message)
+    })
   })
 
   client.on('message', async (topic, message) => {
     try {
-      const payload = message.toString().toLowerCase()
+      const rawMessage = message.toString()
+      const payload = rawMessage.toLowerCase()
+      const now = new Date()
       
       // Expected pattern: any/custom/topic/status
       if (topic.endsWith('/status')) {
@@ -46,7 +140,7 @@ const initMQTT = () => {
         if (device) {
           await prisma.device.update({
             where: { id: device.id },
-            data: { is_on: isOn }
+            data: { is_on: isOn, last_seen_at: now }
           })
           
           // Emit selalu dilakukan agar semua tab (Web 1, Web 2) tersinkronisasi
@@ -71,11 +165,19 @@ const initMQTT = () => {
         // Cari device untuk dapetin room_id
         const device = await prisma.device.findFirst({
           where: { mqtt_topic: baseTopic },
-          select: { room_id: true, name: true }
+          select: { id: true, room_id: true, name: true }
         })
 
         if (device) {
-          const data = JSON.parse(message.toString())
+          await prisma.device.update({
+            where: { id: device.id },
+            data: {
+              is_online: true,
+              last_seen_at: now
+            }
+          })
+
+          const data = JSON.parse(rawMessage)
           const { voltage, current, power, energy, frequency, power_factor } = data
 
           const sensorData = {
@@ -127,7 +229,7 @@ const initMQTT = () => {
             where: {
               id: { in: devices.map(d => d.id) }
             },
-            data: { is_online: isOnline }
+            data: { is_online: isOnline, last_seen_at: now }
           })
 
           devices.forEach(device => {
@@ -141,6 +243,87 @@ const initMQTT = () => {
           })
 
           console.log(`[MQTT] ${devices.length} devices marked as ${isOnline ? 'ONLINE' : 'OFFLINE'} via ${topic}`)
+        }
+      }
+
+      if (topic.endsWith('/heartbeat')) {
+        const baseTopic = topic.replace('/heartbeat', '')
+
+        const devices = await prisma.device.findMany({
+          where: { mqtt_topic: baseTopic },
+          select: { id: true, name: true }
+        })
+
+        if (devices.length > 0) {
+          await prisma.device.updateMany({
+            where: {
+              id: { in: devices.map((device) => device.id) }
+            },
+            data: {
+              is_online: true,
+              last_seen_at: now
+            }
+          })
+
+          devices.forEach((device) => {
+            emitDeviceTelemetry({
+              device_id: device.id,
+              name: device.name,
+              last_seen_at: now,
+              source: 'heartbeat'
+            })
+          })
+
+          console.log(`[MQTT] Heartbeat received for ${devices.length} devices via ${topic}`)
+        }
+      }
+
+      if (topic.endsWith('/pong')) {
+        const baseTopic = topic.replace('/pong', '')
+        const data = tryParseJson(rawMessage)
+
+        if (!data?.ping_id || typeof data.sent_at !== 'number') {
+          return
+        }
+
+        const request = pingRequests.get(data.ping_id)
+        const latencyMs = Math.max(Date.now() - data.sent_at, 0)
+
+        let where = { mqtt_topic: baseTopic }
+
+        if (request?.deviceId) {
+          where = { id: request.deviceId }
+        }
+
+        const devices = await prisma.device.findMany({
+          where,
+          select: { id: true, name: true }
+        })
+
+        if (devices.length > 0) {
+          await prisma.device.updateMany({
+            where: {
+              id: { in: devices.map((device) => device.id) }
+            },
+            data: {
+              is_online: true,
+              last_seen_at: now,
+              last_latency_ms: latencyMs
+            }
+          })
+
+          devices.forEach((device) => {
+            emitDeviceTelemetry({
+              device_id: device.id,
+              name: device.name,
+              last_seen_at: now,
+              latency_ms: latencyMs,
+              source: 'pong'
+            })
+          })
+
+          pingRequests.delete(data.ping_id)
+          console.log(`[MQTT] Pong received from ${topic} with latency ${latencyMs}ms`)
         }
       }
     } catch (error) {

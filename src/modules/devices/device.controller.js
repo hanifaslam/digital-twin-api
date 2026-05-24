@@ -92,6 +92,8 @@ const deviceController = {
             status: true,
             is_on: true,
             is_online: true,
+            last_seen_at: true,
+            last_latency_ms: true,
             created_at: true,
             updated_at: true
           },
@@ -116,6 +118,8 @@ const deviceController = {
         status: device.status,
         is_on: device.is_on,
         is_online: device.is_online,
+        last_seen_at: device.last_seen_at,
+        last_latency_ms: device.last_latency_ms,
         is_mqtt_connected: isMqttConnected,
         created_at: device.created_at,
         updated_at: device.updated_at
@@ -155,6 +159,8 @@ const deviceController = {
         stream_url: device.stream_url,
         status: device.status,
         is_on: device.is_on,
+        last_seen_at: device.last_seen_at,
+        last_latency_ms: device.last_latency_ms,
         created_at: device.created_at,
         updated_at: device.updated_at
       }
@@ -226,6 +232,8 @@ const deviceController = {
         stream_url: updatedDevice.stream_url,
         status: updatedDevice.status,
         is_on: updatedDevice.is_on,
+        last_seen_at: updatedDevice.last_seen_at,
+        last_latency_ms: updatedDevice.last_latency_ms,
         created_at: updatedDevice.created_at,
         updated_at: updatedDevice.updated_at
       }

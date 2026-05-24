@@ -299,20 +299,24 @@ model DailySensorSummary {
 }
 
 model Device {
-  id         String     @id @default(cuid())
-  name       String
-  type       DeviceType
-  room_id    String
-  room       Room       @relation(fields: [room_id], references: [id])
-  mqtt_topic String?
-  stream_url String?
-  status     Boolean    @default(true)
-  is_on      Boolean    @default(false)
-  is_online  Boolean    @default(false)
-  created_at DateTime   @default(now())
-  updated_at DateTime   @updatedAt
+  id              String     @id @default(cuid())
+  name            String
+  type            DeviceType
+  room_id         String
+  room            Room       @relation(fields: [room_id], references: [id])
+  mqtt_topic      String?
+  stream_url      String?
+  status          Boolean    @default(true)
+  is_on           Boolean    @default(false)
+  is_online       Boolean    @default(false)
+  last_seen_at DateTime?
+  last_latency_ms Int?
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @updatedAt
 
   @@index([room_id])
+  @@index([last_seen_at])
+  @@index([last_latency_ms])
 }
 
 enum DeviceType {

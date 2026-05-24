@@ -4,6 +4,7 @@ const dashboardController = require('./dashboard.controller')
 const router = express.Router()
 
 router.get('/summary-cards', dashboardController.getSummaryCards)
+router.get('/device-live-summary', dashboardController.getDeviceLiveSummary)
 router.get('/weekly-attendance', dashboardController.getWeeklyAttendanceOverview)
 router.get('/live-ongoing-classes', dashboardController.getLiveOngoingClasses)
 router.get('/upcoming-classes', dashboardController.getUpcomingClasses)
