@@ -1,11 +1,14 @@
-const { Day } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const path = require('path')
 const s3 = require('../../config/s3')
 const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3')
 const { getIO } = require('../../config/socket')
-const { formatTime, getJakartaTime } = require('../../utils/date')
+const {
+  formatTime,
+  getJakartaScheduleContext,
+  getJakartaTime
+} = require('../../utils/date')
 const { addActivityLog } = require('../../common/activity-log')
 const { emitActivityLogUpdate } = require('../../config/socket')
 
@@ -156,16 +159,7 @@ const faceRecognitionController = {
 
       // --- LOGIKA CEK JADWAL & LOKASI ---
       const now = new Date()
-      const dayIndex = now.getDay()
-      const dayMap = {
-        1: Day.MONDAY,
-        2: Day.TUESDAY,
-        3: Day.WEDNESDAY,
-        4: Day.THURSDAY,
-        5: Day.FRIDAY
-      }
-      const currentDay = dayMap[dayIndex]
-      const currentTime = formatTime(now)
+      const { currentDay, currentTime } = getJakartaScheduleContext(now)
       const { latitude: userLat, longitude: userLng } = req.body
 
       // 1. Cari Jadwal Aktif (Sedang Berlangsung)
@@ -372,10 +366,8 @@ const faceRecognitionController = {
       })
 
       const now = new Date()
-      const dayIndex = now.getDay()
       const { hours: jakartaHour } = getJakartaTime(now)
-
-      const isWeekend = dayIndex === 0 || dayIndex === 6
+      const { isWeekend } = getJakartaScheduleContext(now)
       const timeAllowed = jakartaHour >= 7
 
       // Check if already attended today

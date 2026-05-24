@@ -1,8 +1,7 @@
 const cron = require('node-cron')
-const { Day } = require('@prisma/client')
 const prisma = require('../../config/prisma')
 const { getIO } = require('../../config/socket')
-const { getJakartaTime } = require('../../utils/date')
+const { getJakartaScheduleContext } = require('../../utils/date')
 const { addActivityLog } = require('../activity-log')
 const { emitActivityLogUpdate } = require('../../config/socket')
 
@@ -24,21 +23,8 @@ const getJakartaDayStart = () => {
 const syncLecturerAvailability = async () => {
   console.log('[Cron] Checking lecturer status & schedule transitions...')
   try {
-    const now = new Date()
     const jakartaDayStart = getJakartaDayStart()
-    const daysMap = {
-      1: Day.MONDAY,
-      2: Day.TUESDAY,
-      3: Day.WEDNESDAY,
-      4: Day.THURSDAY,
-      5: Day.FRIDAY
-    }
-    const currentDay = daysMap[now.getDay()]
-    const { hours, minutes } = getJakartaTime(now)
-    const currentTime =
-      hours.toString().padStart(2, '0') +
-      ':' +
-      minutes.toString().padStart(2, '0')
+    const { currentDay, currentTime } = getJakartaScheduleContext()
 
     // Ambil semua dosen agar status dashboard selalu tersinkron,
     // tidak bergantung pada apakah dosen sudah registrasi face data.
@@ -46,7 +32,7 @@ const syncLecturerAvailability = async () => {
       include: {
         schedules: {
           where: {
-            day: currentDay || undefined, // Jika weekend (null), jangan filter berdasarkan hari ini (atau skip)
+            day: currentDay || undefined,
             status: true
           },
           include: { time_slot: true }

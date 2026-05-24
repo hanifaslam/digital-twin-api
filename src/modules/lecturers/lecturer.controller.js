@@ -3,8 +3,7 @@ const { success, error } = require('../../config/response')
 const redisClient = require('../../config/redis')
 const { buildPagination } = require('../../utils/pagination')
 const { getIO } = require('../../config/socket')
-const { Day } = require('@prisma/client')
-const { getJakartaTime } = require('../../utils/date')
+const { getJakartaScheduleContext } = require('../../utils/date')
 const { addActivityLog } = require('../../common/activity-log')
 const { emitActivityLogUpdate } = require('../../config/socket')
 
@@ -443,20 +442,7 @@ const lecturerController = {
         return error(res, 'room_id path parameter is required', 400)
       }
 
-      const now = new Date()
-      const daysMap = {
-        1: Day.MONDAY,
-        2: Day.TUESDAY,
-        3: Day.WEDNESDAY,
-        4: Day.THURSDAY,
-        5: Day.FRIDAY
-      }
-      const currentDay = daysMap[now.getDay()]
-      const { hours, minutes } = getJakartaTime(now)
-      const currentTime =
-        hours.toString().padStart(2, '0') +
-        ':' +
-        minutes.toString().padStart(2, '0')
+      const { currentDay, currentTime } = getJakartaScheduleContext()
 
       const lecturers = await prisma.lecturer.findMany({
         where: {
@@ -472,20 +458,24 @@ const lecturerController = {
             },
             {
               OR: [
-                {
-                  // Dosen yang sedang mengajar di ruangan ini sekarang
-                  schedules: {
-                    some: {
-                      room_id: room_id,
-                      day: currentDay || undefined,
-                      status: true,
-                      time_slot: {
-                        start_time: { lte: currentTime },
-                        end_time: { gte: currentTime }
+                ...(currentDay
+                  ? [
+                      {
+                        // Dosen yang sedang mengajar di ruangan ini sekarang
+                        schedules: {
+                          some: {
+                            room_id: room_id,
+                            day: currentDay,
+                            status: true,
+                            time_slot: {
+                              start_time: { lte: currentTime },
+                              end_time: { gte: currentTime }
+                            }
+                          }
+                        }
                       }
-                    }
-                  }
-                },
+                    ]
+                  : []),
                 {
                   // Dosen yang ruangan aslinya (home room) adalah ruangan ini
                   study_programs: {

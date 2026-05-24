@@ -1,15 +1,58 @@
-const getJakartaTime = (date) => {
+const { Day } = require('@prisma/client')
+
+const getJakartaDateParts = (date) => {
   const d = date ? new Date(date) : new Date()
-  const parts = new Intl.DateTimeFormat('en-GB', {
+  const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Jakarta',
-    hour: 'numeric',
-    minute: 'numeric',
+    weekday: 'long',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
     hour12: false
   }).formatToParts(d)
 
+  const get = (type) => parts.find((p) => p.type === type)?.value
+
   return {
-    hours: parseInt(parts.find((p) => p.type === 'hour').value),
-    minutes: parseInt(parts.find((p) => p.type === 'minute').value)
+    weekday: get('weekday'),
+    year: Number(get('year')),
+    month: Number(get('month')),
+    day: Number(get('day')),
+    hours: Number(get('hour')),
+    minutes: Number(get('minute')),
+    seconds: Number(get('second'))
+  }
+}
+
+const getJakartaTime = (date) => {
+  const { hours, minutes } = getJakartaDateParts(date)
+
+  return {
+    hours,
+    minutes
+  }
+}
+
+const getJakartaScheduleContext = (date) => {
+  const parts = getJakartaDateParts(date)
+  const dayMap = {
+    Monday: Day.MONDAY,
+    Tuesday: Day.TUESDAY,
+    Wednesday: Day.WEDNESDAY,
+    Thursday: Day.THURSDAY,
+    Friday: Day.FRIDAY
+  }
+
+  return {
+    ...parts,
+    currentDay: dayMap[parts.weekday] || null,
+    currentTime: `${parts.hours.toString().padStart(2, '0')}:${parts.minutes
+      .toString()
+      .padStart(2, '0')}`,
+    isWeekend: !dayMap[parts.weekday]
   }
 }
 
@@ -33,5 +76,7 @@ const formatTime = (date) => {
 
 module.exports = {
   formatTime,
+  getJakartaDateParts,
+  getJakartaScheduleContext,
   getJakartaTime
 }

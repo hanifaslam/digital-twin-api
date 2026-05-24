@@ -1,8 +1,7 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
-const { Day } = require('@prisma/client')
-const { getJakartaTime } = require('../../utils/date')
+const { getJakartaScheduleContext } = require('../../utils/date')
 
 const getRoomDependencyCount = (room) => {
   const schedules = room?._count?.schedules || 0
@@ -450,25 +449,16 @@ const roomController = {
         return error(res, 'room_id path parameter is required', 400)
       }
 
-      const now = new Date()
-      const daysMap = {
-        1: Day.MONDAY,
-        2: Day.TUESDAY,
-        3: Day.WEDNESDAY,
-        4: Day.THURSDAY,
-        5: Day.FRIDAY
+      const { currentDay, currentTime } = getJakartaScheduleContext()
+
+      if (!currentDay) {
+        return success(res, 'success', [])
       }
-      const currentDay = daysMap[now.getDay()]
-      const { hours, minutes } = getJakartaTime(now)
-      const currentTime =
-        hours.toString().padStart(2, '0') +
-        ':' +
-        minutes.toString().padStart(2, '0')
 
       const schedules = await prisma.schedule.findMany({
         where: {
           room_id: room_id,
-          day: currentDay || undefined,
+          day: currentDay,
           status: true
         },
         include: {
