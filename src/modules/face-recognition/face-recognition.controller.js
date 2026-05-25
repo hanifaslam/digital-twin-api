@@ -209,6 +209,7 @@ const faceRecognitionController = {
 
       // 4. Kumpulkan Semua Titik Lokasi Valid
       const validPoints = []
+      let matchedRoomId = null
 
       // Tambahkan Ruang Dosen dari tiap Prodi si Dosen
       lecturer.study_programs.forEach((sp) => {
@@ -257,7 +258,6 @@ const faceRecognitionController = {
         let isAtValidLocation = false
         let minDistance = Infinity
         let closestTarget = ''
-        let matchedRoomId = null // <--- Simpan ID ruangan yang cocok
 
         for (const point of validPoints) {
           const lat = point.room.building?.latitude
