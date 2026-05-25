@@ -6,6 +6,7 @@ const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3')
 const { getIO } = require('../../config/socket')
 const {
   formatTime,
+  getJakartaDayRange,
   getJakartaScheduleContext,
   getJakartaTime
 } = require('../../utils/date')
@@ -371,14 +372,14 @@ const faceRecognitionController = {
       const timeAllowed = jakartaHour >= 7
 
       // Check if already attended today
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
+      const { start: startOfDay, end: endOfDay } = getJakartaDayRange(now)
 
       const attendance = await prisma.attendance.findFirst({
         where: {
           lecturer_id: lecturerId,
           check_in_at: {
-            gte: today
+            gte: startOfDay,
+            lte: endOfDay
           }
         },
         orderBy: {
@@ -481,14 +482,16 @@ const faceRecognitionController = {
       const lecturerId = req.user.lecturer?.id
       if (!lecturerId) return error(res, 'Lecturer profile not found', 403)
 
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
+      const { start: startOfDay, end: endOfDay } = getJakartaDayRange()
 
       // 1. Hapus record absensi hari ini
       await prisma.attendance.deleteMany({
         where: {
           lecturer_id: lecturerId,
-          check_in_at: { gte: today }
+          check_in_at: {
+            gte: startOfDay,
+            lte: endOfDay
+          }
         }
       })
 

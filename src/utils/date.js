@@ -56,6 +56,18 @@ const getJakartaScheduleContext = (date) => {
   }
 }
 
+const toUtcFromJakarta = (year, month, day, hour = 0, minute = 0, second = 0) =>
+  new Date(Date.UTC(year, month - 1, day, hour - 7, minute, second))
+
+const getJakartaDayRange = (date = new Date()) => {
+  const { year, month, day } = getJakartaDateParts(date)
+
+  return {
+    start: toUtcFromJakarta(year, month, day, 0, 0, 0),
+    end: toUtcFromJakarta(year, month, day, 23, 59, 59)
+  }
+}
+
 /**
  * Format a Date object or string to HH:mm string (Asia/Jakarta)
  * @param {Date|string} date - Date object or date string
@@ -76,6 +88,7 @@ const formatTime = (date) => {
 
 module.exports = {
   formatTime,
+  getJakartaDayRange,
   getJakartaDateParts,
   getJakartaScheduleContext,
   getJakartaTime
