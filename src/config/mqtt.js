@@ -4,12 +4,16 @@ const {
   getIO,
   emitEnergyMonitoringUpdate,
   emitDeviceLiveSummaryUpdate,
+  emitRoomEnvironmentUpdate,
   emitActivityLogUpdate
 } = require('./socket')
 const {
   buildDeviceLiveSummary,
   buildEnergyMonitoringSummary
 } = require('../modules/dashboard/dashboard.controller')
+const {
+  mapEnvironmentPayload
+} = require('../modules/sensors/sensor.controller')
 const { addActivityLog } = require('../common/activity-log')
 
 let client = null
@@ -289,7 +293,7 @@ const initMQTT = () => {
 
           const room = await prisma.room.findUnique({
             where: { id: device.room_id },
-            select: { building_id: true }
+            select: { id: true, name: true, building_id: true }
           })
 
           await emitLatestDeviceLiveSummary()
@@ -331,6 +335,28 @@ const initMQTT = () => {
             })
           } catch (ioError) {
             // Silently fail if socket is not initialized
+          }
+
+          if (hasEnvironmentalMetrics) {
+            emitRoomEnvironmentUpdate(
+              device.room_id,
+              mapEnvironmentPayload({
+                ...sensorData,
+                created_at: now,
+                room: {
+                  id: device.room_id,
+                  name: room?.name || null
+                },
+                device: {
+                  id: device.id,
+                  name: device.name,
+                  type: device.type,
+                  mqtt_topic: baseTopic,
+                  is_online: true,
+                  last_seen_at: now
+                }
+              })
+            )
           }
 
           console.log(

@@ -2,6 +2,7 @@ const { Server } = require('socket.io')
 
 let io
 const energyRoomPrefix = 'energy-monitoring:'
+const roomEnvironmentPrefix = 'room-environment:'
 
 const initSocket = (server) => {
   io = new Server(server, {
@@ -38,6 +39,18 @@ const initSocket = (server) => {
       socket.leave(`${energyRoomPrefix}${building_id}`)
     })
 
+    socket.on('room-environment:subscribe', ({ room_id } = {}) => {
+      if (!room_id) return
+
+      socket.join(`${roomEnvironmentPrefix}${room_id}`)
+    })
+
+    socket.on('room-environment:unsubscribe', ({ room_id } = {}) => {
+      if (!room_id) return
+
+      socket.leave(`${roomEnvironmentPrefix}${room_id}`)
+    })
+
     socket.on('disconnect', () => {
       console.log('Client disconnected:', socket.id)
     })
@@ -68,6 +81,15 @@ const emitDeviceLiveSummaryUpdate = (payload) => {
   io.emit('device-live-summary:update', payload)
 }
 
+const emitRoomEnvironmentUpdate = (roomId, payload) => {
+  if (!io || !roomId) return
+
+  io.to(`${roomEnvironmentPrefix}${roomId}`).emit(
+    'room-environment:update',
+    payload
+  )
+}
+
 const emitActivityLogUpdate = (payload) => {
   if (!io) return
 
@@ -79,5 +101,6 @@ module.exports = {
   getIO,
   emitEnergyMonitoringUpdate,
   emitDeviceLiveSummaryUpdate,
+  emitRoomEnvironmentUpdate,
   emitActivityLogUpdate
 }

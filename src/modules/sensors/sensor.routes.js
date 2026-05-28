@@ -5,6 +5,7 @@ const { authMiddleware } = require('../../common/middlewares/auth.middleware')
 
 router.use(authMiddleware)
 
+router.get('/environment/room/:roomId', sensorController.getRoomEnvironment)
 router.get('/latest/room/:roomId', sensorController.getLatestByRoom)
 router.get('/latest/device/:deviceId', sensorController.getLatestByDevice)
 router.get('/history', sensorController.getHistory)
