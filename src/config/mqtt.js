@@ -34,6 +34,38 @@ const tryParseJson = (value) => {
   }
 }
 
+const toNullableNumber = (value) => {
+  if (value === null || value === undefined || value === '') {
+    return null
+  }
+
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const inferSensorType = (payload = {}) => {
+  if (typeof payload.sensor_type === 'string' && payload.sensor_type.trim()) {
+    return payload.sensor_type.trim().toUpperCase()
+  }
+
+  if (payload.temperature !== undefined || payload.humidity !== undefined) {
+    return 'DHT22'
+  }
+
+  if (
+    payload.voltage !== undefined ||
+    payload.current !== undefined ||
+    payload.power !== undefined ||
+    payload.energy !== undefined ||
+    payload.frequency !== undefined ||
+    payload.power_factor !== undefined
+  ) {
+    return 'PZEM'
+  }
+
+  return null
+}
+
 const emitDeviceTelemetry = (payload) => {
   try {
     getIO().emit('device-telemetry', payload)
@@ -88,11 +120,9 @@ const sendDevicePings = async () => {
         sentAt: now
       })
 
-      client.publish(
-        `${device.mqtt_topic}/ping`,
-        JSON.stringify(payload),
-        { qos: 1 }
-      )
+      client.publish(`${device.mqtt_topic}/ping`, JSON.stringify(payload), {
+        qos: 1
+      })
     })
 
     const cutoff = now - PING_INTERVAL_MS * 3
@@ -125,7 +155,7 @@ const initMQTT = () => {
     password: process.env.MQTT_PASSWORD || undefined,
     clean: true,
     reconnectPeriod: 1000,
-    connectTimeout: 30 * 1000,
+    connectTimeout: 30 * 1000
   }
 
   const brokerUrl = process.env.MQTT_URL || 'mqtt://localhost:1883'
@@ -150,7 +180,7 @@ const initMQTT = () => {
       const payload = rawMessage.toLowerCase()
       const now = new Date()
       const isRetainedMessage = Boolean(packet?.retain)
-      
+
       // Expected pattern: any/custom/topic/status
       if (topic.endsWith('/status')) {
         const baseTopic = topic.replace('/status', '')
@@ -174,33 +204,77 @@ const initMQTT = () => {
               message: `${device.name} switched ${isOn ? 'ON' : 'OFF'}.`
             })
           }
-          
+
           // Emit selalu dilakukan agar semua tab (Web 1, Web 2) tersinkronisasi
           try {
-            getIO().emit('device-status', { 
-              device_id: device.id, 
+            getIO().emit('device-status', {
+              device_id: device.id,
               name: device.name,
-              is_on: isOn 
+              is_on: isOn
             })
           } catch (ioError) {
             // Silently fail if socket is not initialized
           }
 
-          console.log(`[MQTT] Device '${device.name}' state updated to: ${isOn}`)
+          console.log(
+            `[MQTT] Device '${device.name}' state updated to: ${isOn}`
+          )
         }
       }
 
-      // Handler untuk data sensor PZEM (topic berakhiran /data)
+      // Handler untuk data sensor (PZEM / DHT22) pada topic berakhiran /data
       if (topic.endsWith('/data')) {
         const baseTopic = topic.replace('/data', '')
-        
-        // Cari device untuk dapetin room_id
+
+        // Cari device untuk dapetin room_id dan device_id
         const device = await prisma.device.findFirst({
           where: { mqtt_topic: baseTopic },
-          select: { id: true, room_id: true, name: true }
+          select: { id: true, room_id: true, name: true, type: true }
         })
 
         if (device) {
+          const data = tryParseJson(rawMessage)
+          if (!data) {
+            console.error(`[MQTT] Invalid JSON payload received on ${topic}`)
+            return
+          }
+
+          const sensorType = inferSensorType(data)
+          const sensorData = {
+            room_id: device.room_id,
+            device_id: device.id,
+            sensor_type: sensorType,
+            voltage: toNullableNumber(data.voltage),
+            current: toNullableNumber(data.current),
+            power: toNullableNumber(data.power),
+            energy: toNullableNumber(data.energy),
+            frequency: toNullableNumber(data.frequency),
+            power_factor: toNullableNumber(data.power_factor),
+            temperature: toNullableNumber(data.temperature),
+            humidity: toNullableNumber(data.humidity)
+          }
+
+          const hasElectricalMetrics = [
+            sensorData.voltage,
+            sensorData.current,
+            sensorData.power,
+            sensorData.energy,
+            sensorData.frequency,
+            sensorData.power_factor
+          ].some((value) => value !== null)
+
+          const hasEnvironmentalMetrics = [
+            sensorData.temperature,
+            sensorData.humidity
+          ].some((value) => value !== null)
+
+          if (!hasElectricalMetrics && !hasEnvironmentalMetrics) {
+            console.log(
+              `[MQTT] Ignored telemetry without supported metrics on ${topic}`
+            )
+            return
+          }
+
           await prisma.device.update({
             where: { id: device.id },
             data: {
@@ -208,19 +282,6 @@ const initMQTT = () => {
               last_seen_at: now
             }
           })
-
-          const data = JSON.parse(rawMessage)
-          const { voltage, current, power, energy, frequency, power_factor } = data
-
-          const sensorData = {
-            room_id: device.room_id,
-            voltage: voltage ? parseFloat(voltage) : null,
-            current: current ? parseFloat(current) : null,
-            power: power ? parseFloat(power) : null,
-            energy: energy ? parseFloat(energy) : null,
-            frequency: frequency ? parseFloat(frequency) : null,
-            power_factor: power_factor ? parseFloat(power_factor) : null
-          }
 
           await prisma.sensorLog.create({
             data: sensorData
@@ -237,23 +298,44 @@ const initMQTT = () => {
             const summary = await buildEnergyMonitoringSummary(room.building_id)
             emitEnergyMonitoringUpdate(room.building_id, summary)
           }
-          pushActivityLog({
-            category: 'TELEMETRY',
-            message: `Power load updated to ${Math.round(Number(sensorData.power || 0))}W from ${device.name}.`
-          })
+
+          if (hasElectricalMetrics) {
+            pushActivityLog({
+              category: 'TELEMETRY',
+              message: `Power load updated to ${Math.round(Number(sensorData.power || 0))}W from ${device.name}.`
+            })
+          } else if (hasEnvironmentalMetrics) {
+            const tempLabel =
+              sensorData.temperature === null
+                ? '--'
+                : `${sensorData.temperature.toFixed(1)}C`
+            const humidityLabel =
+              sensorData.humidity === null
+                ? '--'
+                : `${sensorData.humidity.toFixed(1)}%`
+
+            pushActivityLog({
+              category: 'TELEMETRY',
+              message: `Environment updated from ${device.name} (${tempLabel}, ${humidityLabel}).`
+            })
+          }
 
           // Emit real-time update via Socket.io
           try {
             getIO().emit('sensor-data', {
               ...sensorData,
+              device_id: device.id,
               device_name: device.name,
+              device_type: device.type,
               timestamp: new Date()
             })
           } catch (ioError) {
             // Silently fail if socket is not initialized
           }
 
-          console.log(`[MQTT] Sensor data saved for room of device '${device.name}'`)
+          console.log(
+            `[MQTT] ${sensorType || 'SENSOR'} data saved for device '${device.name}'`
+          )
         }
       }
 
@@ -275,7 +357,7 @@ const initMQTT = () => {
         if (devices.length > 0) {
           await prisma.device.updateMany({
             where: {
-              id: { in: devices.map(d => d.id) }
+              id: { in: devices.map((d) => d.id) }
             },
             data: { is_online: isOnline, last_seen_at: now }
           })
@@ -287,7 +369,7 @@ const initMQTT = () => {
             })
           }
 
-          devices.forEach(device => {
+          devices.forEach((device) => {
             try {
               getIO().emit('device-status', {
                 device_id: device.id,
@@ -297,7 +379,9 @@ const initMQTT = () => {
             } catch (ioError) {}
           })
 
-          console.log(`[MQTT] ${devices.length} devices marked as ${isOnline ? 'ONLINE' : 'OFFLINE'} via ${topic}`)
+          console.log(
+            `[MQTT] ${devices.length} devices marked as ${isOnline ? 'ONLINE' : 'OFFLINE'} via ${topic}`
+          )
         }
       }
 
@@ -330,7 +414,9 @@ const initMQTT = () => {
             })
           })
 
-          console.log(`[MQTT] Heartbeat received for ${devices.length} devices via ${topic}`)
+          console.log(
+            `[MQTT] Heartbeat received for ${devices.length} devices via ${topic}`
+          )
         }
       }
 
@@ -384,7 +470,9 @@ const initMQTT = () => {
           })
 
           pingRequests.delete(data.ping_id)
-          console.log(`[MQTT] Pong received from ${topic} with latency ${latencyMs}ms`)
+          console.log(
+            `[MQTT] Pong received from ${topic} with latency ${latencyMs}ms`
+          )
         }
       }
     } catch (error) {
@@ -412,15 +500,16 @@ const getMQTTClient = () => {
 
 /**
  * Helper function to publish to a topic
- * @param {string} topic 
- * @param {object|string} message 
+ * @param {string} topic
+ * @param {object|string} message
  */
 const publish = (topic, message) => {
   const mqttClient = getMQTTClient()
   if (!topic) return
 
-  const payload = typeof message === 'object' ? JSON.stringify(message) : message
-  
+  const payload =
+    typeof message === 'object' ? JSON.stringify(message) : message
+
   mqttClient.publish(topic, payload, { qos: 1 }, (err) => {
     if (err) {
       console.error(`MQTT Publish Error to ${topic}:`, err.message)
@@ -431,4 +520,3 @@ const publish = (topic, message) => {
 }
 
 module.exports = { initMQTT, getMQTTClient, publish }
-

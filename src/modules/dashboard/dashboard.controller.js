@@ -3,7 +3,13 @@ const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { getActivityLogs } = require('../../common/activity-log')
 
-const DAY_ORDER = [Day.MONDAY, Day.TUESDAY, Day.WEDNESDAY, Day.THURSDAY, Day.FRIDAY]
+const DAY_ORDER = [
+  Day.MONDAY,
+  Day.TUESDAY,
+  Day.WEDNESDAY,
+  Day.THURSDAY,
+  Day.FRIDAY
+]
 
 const DAY_LABELS = {
   [Day.MONDAY]: 'Mon',
@@ -165,7 +171,8 @@ const resolveSelectedBuilding = async (user, requestedBuildingId) => {
   })
 
   const selectedBuilding =
-    requestedBuildingId && buildings.some((item) => item.id === requestedBuildingId)
+    requestedBuildingId &&
+    buildings.some((item) => item.id === requestedBuildingId)
       ? buildings.find((item) => item.id === requestedBuildingId)
       : buildings[0] || null
 
@@ -286,8 +293,17 @@ const buildEnergyMonitoringSummary = async (buildingId) => {
   }
 
   const roomIds = rooms.map((room) => room.id)
+  const powerDevices = await prisma.device.findMany({
+    where: {
+      room_id: { in: roomIds },
+      status: true
+    },
+    select: {
+      id: true
+    }
+  })
 
-  const [recentLogs, latestLogsPerRoom] = await Promise.all([
+  const [recentLogs, latestLogsPerDevice] = await Promise.all([
     prisma.sensorLog.findMany({
       where: {
         room_id: { in: roomIds },
@@ -304,13 +320,14 @@ const buildEnergyMonitoringSummary = async (buildingId) => {
       orderBy: { created_at: 'asc' }
     }),
     Promise.all(
-      roomIds.map((roomId) =>
+      powerDevices.map((device) =>
         prisma.sensorLog.findFirst({
           where: {
-            room_id: roomId,
+            device_id: device.id,
             power: { not: null }
           },
           select: {
+            device_id: true,
             room_id: true,
             power: true,
             created_at: true
@@ -349,7 +366,7 @@ const buildEnergyMonitoringSummary = async (buildingId) => {
   }))
 
   const currentActiveDemandWatts = roundNumber(
-    latestLogsPerRoom.reduce((sum, log) => sum + Number(log?.power || 0), 0),
+    latestLogsPerDevice.reduce((sum, log) => sum + Number(log?.power || 0), 0),
     1
   )
 
@@ -366,7 +383,7 @@ const buildEnergyMonitoringSummary = async (buildingId) => {
           1
         )
 
-  const latestLog = latestLogsPerRoom
+  const latestLog = latestLogsPerDevice
     .filter(Boolean)
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0]
 
@@ -410,7 +427,9 @@ const dashboardController = {
         req.user,
         requestedBuildingId
       )
-      const summary = await buildEnergyMonitoringSummary(selectedBuilding?.id || null)
+      const summary = await buildEnergyMonitoringSummary(
+        selectedBuilding?.id || null
+      )
       return success(res, 'success', summary)
     } catch (err) {
       return error(res, err.message, 500)
@@ -433,74 +452,73 @@ const dashboardController = {
         offlineDevices,
         classesActive,
         activeRoomsScoped
-      ] =
-        await Promise.all([
-          prisma.lecturer.count(),
-          prisma.lecturer.count({
-            where: {
-              created_at: {
-                gte: currentMonthRange.start,
-                lte: currentMonthRange.end
-              }
+      ] = await Promise.all([
+        prisma.lecturer.count(),
+        prisma.lecturer.count({
+          where: {
+            created_at: {
+              gte: currentMonthRange.start,
+              lte: currentMonthRange.end
             }
-          }),
-          prisma.schedule.findMany({
-            where: {
-              status: true,
-              day: currentDay || undefined,
-              time_slot: {
-                start_time: { lte: currentTime },
-                end_time: { gte: currentTime }
-              }
-            },
-            distinct: ['room_id'],
-            select: { room_id: true }
-          }),
-          prisma.device.count({
-            where: {
-              status: true,
-              is_online: true
+          }
+        }),
+        prisma.schedule.findMany({
+          where: {
+            status: true,
+            day: currentDay || undefined,
+            time_slot: {
+              start_time: { lte: currentTime },
+              end_time: { gte: currentTime }
             }
-          }),
-          Array.isArray(buildingIds)
-            ? prisma.building.count({
-                where: {
-                  id: { in: buildingIds.length ? buildingIds : [''] }
-                }
-              })
-            : prisma.building.count({ where: { status: true } }),
-          prisma.device.count({
-            where: buildScopedWhere(buildingIds, { status: true })
-          }),
-          prisma.device.count({
-            where: buildScopedWhere(buildingIds, {
-              status: true,
-              is_online: false
-            })
-          }),
-          prisma.schedule.count({
-            where: buildScopedWhere(buildingIds, {
-              status: true,
-              day: currentDay || undefined,
-              time_slot: {
-                start_time: { lte: currentTime },
-                end_time: { gte: currentTime }
+          },
+          distinct: ['room_id'],
+          select: { room_id: true }
+        }),
+        prisma.device.count({
+          where: {
+            status: true,
+            is_online: true
+          }
+        }),
+        Array.isArray(buildingIds)
+          ? prisma.building.count({
+              where: {
+                id: { in: buildingIds.length ? buildingIds : [''] }
               }
             })
-          }),
-          prisma.schedule.findMany({
-            where: buildScopedWhere(buildingIds, {
-              status: true,
-              day: currentDay || undefined,
-              time_slot: {
-                start_time: { lte: currentTime },
-                end_time: { gte: currentTime }
-              }
-            }),
-            distinct: ['room_id'],
-            select: { room_id: true }
+          : prisma.building.count({ where: { status: true } }),
+        prisma.device.count({
+          where: buildScopedWhere(buildingIds, { status: true })
+        }),
+        prisma.device.count({
+          where: buildScopedWhere(buildingIds, {
+            status: true,
+            is_online: false
           })
-        ])
+        }),
+        prisma.schedule.count({
+          where: buildScopedWhere(buildingIds, {
+            status: true,
+            day: currentDay || undefined,
+            time_slot: {
+              start_time: { lte: currentTime },
+              end_time: { gte: currentTime }
+            }
+          })
+        }),
+        prisma.schedule.findMany({
+          where: buildScopedWhere(buildingIds, {
+            status: true,
+            day: currentDay || undefined,
+            time_slot: {
+              start_time: { lte: currentTime },
+              end_time: { gte: currentTime }
+            }
+          }),
+          distinct: ['room_id'],
+          select: { room_id: true }
+        })
+      ])
 
       const deviceHealth =
         totalDevices === 0
@@ -635,7 +653,9 @@ const dashboardController = {
         orderBy: [{ time_slot: { start_time: 'asc' } }, { created_at: 'asc' }]
       })
 
-      const lecturerIds = [...new Set(schedules.map((item) => item.lecturer_id))]
+      const lecturerIds = [
+        ...new Set(schedules.map((item) => item.lecturer_id))
+      ]
       const attendanceToday = await prisma.attendance.findMany({
         where: {
           lecturer_id: { in: lecturerIds.length ? lecturerIds : [''] },
@@ -760,7 +780,8 @@ const dashboardController = {
       })
 
       const selectedBuildingId =
-        requestedBuildingId && buildings.some((b) => b.id === requestedBuildingId)
+        requestedBuildingId &&
+        buildings.some((b) => b.id === requestedBuildingId)
           ? requestedBuildingId
           : buildings[0]?.id || null
 

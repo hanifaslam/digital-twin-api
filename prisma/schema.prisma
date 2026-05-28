@@ -271,16 +271,23 @@ model DeviceStatus {
 model SensorLog {
   id           String   @id @default(cuid())
   room_id      String
+  device_id    String?
+  sensor_type  String?
   voltage      Float?
   current      Float?
   power        Float?
   energy       Float?
   frequency    Float?
   power_factor Float?
+  temperature  Float?
+  humidity     Float?
   created_at   DateTime @default(now())
   room         Room     @relation(fields: [room_id], references: [id])
+  device       Device?  @relation(fields: [device_id], references: [id])
 
   @@index([room_id])
+  @@index([device_id])
+  @@index([sensor_type])
   @@index([created_at])
 }
 
@@ -304,6 +311,7 @@ model Device {
   type            DeviceType
   room_id         String
   room            Room       @relation(fields: [room_id], references: [id])
+  sensor_logs     SensorLog[]
   mqtt_topic      String?
   stream_url      String?
   status          Boolean    @default(true)
@@ -323,6 +331,7 @@ enum DeviceType {
   AC
   LIGHT
   CCTV
+  SENSOR
 }
 
 enum CourseSemester {

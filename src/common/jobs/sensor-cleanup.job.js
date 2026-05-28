@@ -5,7 +5,7 @@ const initSensorCleanupJob = () => {
   // Jalankan setiap jam 00:01 tengah malam
   cron.schedule('1 0 * * *', async () => {
     console.log('--- Starting Sensor Data Aggregation & Cleanup ---')
-    
+
     try {
       const yesterday = new Date()
       yesterday.setDate(yesterday.getDate() - 1)
@@ -19,6 +19,9 @@ const initSensorCleanupJob = () => {
         where: {
           sensor_logs: {
             some: {
+              power: {
+                not: null
+              },
               created_at: {
                 gte: yesterday,
                 lt: today
@@ -33,6 +36,9 @@ const initSensorCleanupJob = () => {
         const aggregation = await prisma.sensorLog.aggregate({
           where: {
             room_id: room.id,
+            power: {
+              not: null
+            },
             created_at: {
               gte: yesterday,
               lt: today
@@ -88,7 +94,9 @@ const initSensorCleanupJob = () => {
         }
       })
 
-      console.log(`[Job] Cleanup complete. Deleted ${deleted.count} old sensor logs.`)
+      console.log(
+        `[Job] Cleanup complete. Deleted ${deleted.count} old sensor logs.`
+      )
       console.log('--- Sensor Data Aggregation & Cleanup Finished ---')
     } catch (error) {
       console.error('[Job] Error in cleanup job:', error.message)
