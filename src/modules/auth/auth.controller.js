@@ -214,7 +214,8 @@ const login = async (req, res) => {
       role_id: user.role_id,
       role_code: user.role.code || null,
       lecturer_id: scopes.id || null,
-      nip: scopes.nip || null
+      nip: scopes.nip || null,
+      phone_number: user.lecturer?.phone_number || user.helper?.phone_number || null
     })
   } catch (err) {
     console.error(err)
@@ -341,6 +342,7 @@ const getMe = async (req, res) => {
       role_code: user.role.code || null,
       lecturer_id: scopes.id || null,
       nip: scopes.nip || null,
+      phone_number: user.lecturer?.phone_number || user.helper?.phone_number || null,
       study_programs: scopes.study_programs,
       buildings: scopes.buildings,
       access
