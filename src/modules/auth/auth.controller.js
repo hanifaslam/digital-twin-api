@@ -6,6 +6,7 @@ const { success, error } = require('../../config/response')
 const path = require('path')
 const s3 = require('../../config/s3')
 const { PutObjectCommand } = require('@aws-sdk/client-s3')
+const redisClient = require('../../config/redis')
 const S3_BUCKET = process.env.S3_BUCKET
 const S3_ENDPOINT = process.env.S3_ENDPOINT
 
@@ -447,6 +448,8 @@ const changePassword = async (req, res) => {
       data: { password: hashedPassword }
     })
 
+    await redisClient.del(`user:auth:${user_id}`)
+
     return success(res, 'Password berhasil diubah')
   } catch (err) {
     console.error(err)
@@ -501,6 +504,8 @@ const updateProfile = async (req, res) => {
       }
     })
 
+    await redisClient.del(`user:auth:${user_id}`)
+
     return success(res, 'Profile updated successfully')
   } catch (err) {
     console.error(err)
@@ -534,6 +539,8 @@ const uploadProfilePhoto = async (req, res) => {
       where: { id: user_id },
       data: { profile_picture: imageUrl }
     })
+
+    await redisClient.del(`user:auth:${user_id}`)
 
     return success(res, 'Profile photo updated successfully', {
       profile_picture: imageUrl
