@@ -50,9 +50,18 @@ const changePasswordSchema = z
     path: ['confirm_password']
   })
 
+const updateProfileSchema = z
+  .object({
+    name: z.string().min(1, 'Name cannot be empty').optional(),
+    email: z.string().email('Invalid email format').optional(),
+    phone_number: z.string().optional()
+  })
+  .strict()
+
 module.exports = {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
-  changePasswordSchema
+  changePasswordSchema,
+  updateProfileSchema
 }

@@ -3,11 +3,13 @@ const router = express.Router()
 const authController = require('./auth.controller')
 const { authMiddleware } = require('../../common/middlewares/auth.middleware')
 const { validate } = require('../../common/middlewares/validate.middleware')
+const { uploadImage } = require('../../common/middlewares/upload.middleware')
 const {
   loginSchema,
   forgotPasswordSchema,
   resetPasswordSchema,
-  changePasswordSchema
+  changePasswordSchema,
+  updateProfileSchema
 } = require('./auth.schema')
 
 // Public endpoints
@@ -31,6 +33,18 @@ router.post(
   authMiddleware,
   validate(changePasswordSchema),
   authController.changePassword
+)
+router.patch(
+  '/profile',
+  authMiddleware,
+  validate(updateProfileSchema),
+  authController.updateProfile
+)
+router.post(
+  '/profile/photo',
+  authMiddleware,
+  uploadImage.single('file'),
+  authController.uploadProfilePhoto
 )
 router.post('/logout', authController.logout)
 

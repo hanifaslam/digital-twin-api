@@ -3,6 +3,11 @@ const bcrypt = require('bcryptjs')
 const crypto = require('crypto')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const path = require('path')
+const s3 = require('../../config/s3')
+const { PutObjectCommand } = require('@aws-sdk/client-s3')
+const S3_BUCKET = process.env.S3_BUCKET
+const S3_ENDPOINT = process.env.S3_ENDPOINT
 
 const getRoleIdentity = (role = {}) =>
   (role.code || role.name || '')
@@ -203,6 +208,7 @@ const login = async (req, res) => {
       name: user.name,
       username: user.username,
       email: user.email,
+      profile_picture: user.profile_picture || null,
       role_name: user.role.name,
       role_id: user.role_id,
       role_code: user.role.code || null,
@@ -328,6 +334,7 @@ const getMe = async (req, res) => {
       name: user.name,
       username: user.username,
       email: user.email,
+      profile_picture: user.profile_picture || null,
       role_name: user.role.name,
       role_id: user.role_id,
       role_code: user.role.code || null,
@@ -447,6 +454,96 @@ const changePassword = async (req, res) => {
   }
 }
 
+const updateProfile = async (req, res) => {
+  try {
+    const { name, email, phone_number } = req.body || {}
+    const user_id = req.user.id
+
+    if (email) {
+      const existingUser = await prisma.user.findFirst({
+        where: { email, id: { not: user_id } }
+      })
+      if (existingUser) {
+        return error(res, 'Email already in use', 400)
+      }
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: user_id },
+      include: { lecturer: true, helper: true }
+    })
+
+    if (!user) return error(res, 'User not found', 404)
+
+    await prisma.$transaction(async (tx) => {
+      if (name !== undefined || email !== undefined) {
+        await tx.user.update({
+          where: { id: user_id },
+          data: {
+            ...(name !== undefined && { name }),
+            ...(email !== undefined && { email })
+          }
+        })
+      }
+
+      if (phone_number !== undefined) {
+        if (user.lecturer) {
+          await tx.lecturer.update({
+            where: { user_id: user_id },
+            data: { phone_number }
+          })
+        } else if (user.helper) {
+          await tx.helper.update({
+            where: { user_id: user_id },
+            data: { phone_number }
+          })
+        }
+      }
+    })
+
+    return success(res, 'Profile updated successfully')
+  } catch (err) {
+    console.error(err)
+    return error(res, 'Internal server error', 500)
+  }
+}
+
+const uploadProfilePhoto = async (req, res) => {
+  try {
+    const user_id = req.user.id
+    const file = req.file
+
+    if (!file) return error(res, 'Photo is required', 400)
+
+    const ext = path.extname(file.originalname)
+    const filename = `profiles/${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`
+
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: S3_BUCKET,
+        Key: filename,
+        Body: file.buffer,
+        ContentType: file.mimetype,
+        ACL: 'public-read'
+      })
+    )
+
+    const imageUrl = `${S3_ENDPOINT}/${S3_BUCKET}/${filename}`
+
+    await prisma.user.update({
+      where: { id: user_id },
+      data: { profile_picture: imageUrl }
+    })
+
+    return success(res, 'Profile photo updated successfully', {
+      profile_picture: imageUrl
+    })
+  } catch (err) {
+    console.error('Upload Photo Error:', err)
+    return error(res, 'Internal server error', 500)
+  }
+}
+
 module.exports = {
   login,
   refreshToken,
@@ -454,5 +551,7 @@ module.exports = {
   logout,
   forgotPassword,
   resetPassword,
-  changePassword
+  changePassword,
+  updateProfile,
+  uploadProfilePhoto
 }

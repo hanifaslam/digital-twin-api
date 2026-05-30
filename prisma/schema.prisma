@@ -17,6 +17,7 @@ model User {
   status                 Boolean   @default(true)
   reset_password_token   String?
   reset_password_expires DateTime?
+  profile_picture        String?
   created_at             DateTime  @default(now())
   updated_at             DateTime  @updatedAt
   lecturer               Lecturer?
