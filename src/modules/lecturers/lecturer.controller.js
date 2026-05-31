@@ -609,6 +609,7 @@ const lecturerController = {
           id: lecturer.id,
           name: lecturer.user?.name,
           nip: lecturer.nip,
+          phone_number: lecturer.phone_number,
           status: lecturer.status, // AVAILABLE, BUSY, OFFLINE
           room_type: roomType,
           course: courseName,
