@@ -10,6 +10,7 @@ COPY prisma.config.ts ./
 RUN npx prisma generate
 
 COPY src ./src
+COPY *.xlsx ./
 
 # Add curl for healthcheck
 RUN apk add --no-cache curl
