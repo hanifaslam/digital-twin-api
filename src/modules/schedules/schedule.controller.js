@@ -1,7 +1,166 @@
+const bcrypt = require('bcryptjs')
 const { Day } = require('@prisma/client')
+const path = require('path')
+const XLSX = require('xlsx')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
+
+const SCHEDULE_TEMPLATE_PATH = path.join(process.cwd(), 'format_schedule.xlsx')
+const DEFAULT_LECTURER_PASSWORD = 'Password123!'
+const LECTURER_ROLE_CODES = ['DSN', 'DOSEN']
+const PLACEHOLDER_LECTURER_NAME = 'Tim Prodi'
+const DAY_NAME_MAP = {
+  MONDAY: Day.MONDAY,
+  TUESDAY: Day.TUESDAY,
+  WEDNESDAY: Day.WEDNESDAY,
+  THURSDAY: Day.THURSDAY,
+  FRIDAY: Day.FRIDAY,
+  SENIN: Day.MONDAY,
+  SELASA: Day.TUESDAY,
+  RABU: Day.WEDNESDAY,
+  KAMIS: Day.THURSDAY,
+  "JUM'AT": Day.FRIDAY,
+  JUMAT: Day.FRIDAY,
+  JUMATK: Day.FRIDAY
+}
+
+const normalizeCellText = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+
+const normalizeComparableText = (value) => normalizeCellText(value).toLowerCase()
+
+const buildNameSlug = (value) => {
+  const normalized = normalizeCellText(value)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+
+  return normalized || 'lecturer'
+}
+
+const normalizeTimeRange = (value) => {
+  const normalized = normalizeCellText(value).replace(/\./g, ':')
+  const match = normalized.match(
+    /^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/i
+  )
+
+  if (!match) {
+    return null
+  }
+
+  const formatPart = (part) => {
+    const [hours, minutes] = part.split(':').map(Number)
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`
+  }
+
+  return {
+    start_time: formatPart(match[1]),
+    end_time: formatPart(match[2])
+  }
+}
+
+const normalizeScheduleDay = (value) => {
+  const normalized = normalizeCellText(value).toUpperCase()
+  return DAY_NAME_MAP[normalized] || null
+}
+
+const parseSemesterValue = (value) => {
+  const normalized = normalizeCellText(value)
+  const match = normalized.match(/semester\s*(\d+)/i)
+
+  if (!match) {
+    return null
+  }
+
+  const semesterNumber = Number(match[1])
+
+  if (semesterNumber < 1 || semesterNumber > 8) {
+    return null
+  }
+
+  return `SEMESTER_${semesterNumber}`
+}
+
+const isBreakRow = (row = []) => {
+  const courseCode = normalizeComparableText(row[3])
+  const courseName = normalizeComparableText(row[4])
+
+  return courseCode === 'istirahat' || courseName === 'istirahat'
+}
+
+const isHeaderRow = (row = []) =>
+  normalizeComparableText(row[0]) === 'hari' &&
+  normalizeComparableText(row[1]) === 'jam ke'
+
+const isMeaningfulRow = (row = []) =>
+  row.some((value) => normalizeCellText(value).length > 0)
+
+const parseScheduleWorkbook = (fileBuffer) => {
+  const workbook = XLSX.read(fileBuffer, { type: 'buffer' })
+  const sheetName = workbook.SheetNames[0]
+
+  if (!sheetName) {
+    return null
+  }
+
+  const worksheet = workbook.Sheets[sheetName]
+  const rows = XLSX.utils.sheet_to_json(worksheet, {
+    header: 1,
+    defval: '',
+    raw: false
+  })
+
+  const studyProgramName = normalizeCellText(rows[0]?.[0])
+  const className = normalizeCellText(rows[1]?.[0])
+  const semester = parseSemesterValue(rows[2]?.[0])
+  const scheduleRows = []
+  let currentDay = null
+
+  for (let index = 3; index < rows.length; index += 1) {
+    const row = rows[index] || []
+
+    if (!isMeaningfulRow(row) || isHeaderRow(row) || isBreakRow(row)) {
+      continue
+    }
+
+    const rowDay = normalizeScheduleDay(row[0])
+
+    if (rowDay) {
+      currentDay = rowDay
+    }
+
+    const jamKe = normalizeCellText(row[1])
+    const timeRange = normalizeTimeRange(row[2])
+    const courseCode = normalizeCellText(row[3])
+    const courseName = normalizeCellText(row[4])
+    const lecturerName = normalizeCellText(row[5])
+    const roomName = normalizeCellText(row[7])
+
+    scheduleRows.push({
+      row_number: index + 1,
+      day: currentDay,
+      jam_ke: jamKe,
+      time_range: timeRange,
+      course_code: courseCode,
+      course_name: courseName,
+      lecturer_name: lecturerName,
+      room_name: roomName
+    })
+  }
+
+  return {
+    sheet_name: sheetName,
+    study_program_name: studyProgramName,
+    class_name: className,
+    semester,
+    rows: scheduleRows
+  }
+}
 
 const scheduleInclude = {
   study_program: {
@@ -130,6 +289,18 @@ const formatScheduleDetail = (schedules = []) => {
         new Date(item.updated_at) > new Date(latest) ? item.updated_at : latest,
       firstItem.updated_at
     )
+  }
+}
+
+const buildPlaceholderLecturerIdentity = (studyProgramName) => {
+  const baseSlug = buildNameSlug(
+    `${PLACEHOLDER_LECTURER_NAME}.${studyProgramName || 'study-program'}`
+  )
+
+  return {
+    username: baseSlug,
+    email: `${baseSlug}@polines.ac.id`,
+    nip: `TPL-${baseSlug.toUpperCase().replace(/[^A-Z0-9]+/g, '-')}`
   }
 }
 
@@ -329,6 +500,7 @@ const groupSchedules = (schedules = []) => {
 }
 
 const findScheduleConflict = async ({
+  db = prisma,
   id,
   exclude_ids,
   study_program_id,
@@ -358,7 +530,7 @@ const findScheduleConflict = async ({
       : {}
 
   const [duplicate, roomConflict, lecturerConflict] = await Promise.all([
-    prisma.schedule.findFirst({
+    db.schedule.findFirst({
       where: {
         study_program_id,
         class_id,
@@ -370,10 +542,10 @@ const findScheduleConflict = async ({
         ...excludeFilter
       }
     }),
-    prisma.schedule.findFirst({
+    db.schedule.findFirst({
       where: { room_id, time_slot_id, day, ...excludeFilter }
     }),
-    prisma.schedule.findFirst({
+    db.schedule.findFirst({
       where: { lecturer_id, time_slot_id, day, ...excludeFilter }
     })
   ])
@@ -385,6 +557,7 @@ const findScheduleConflict = async ({
 }
 
 const validateScheduleRelations = async ({
+  db = prisma,
   study_program_id,
   class_id,
   room_id,
@@ -394,19 +567,19 @@ const validateScheduleRelations = async ({
 }) => {
   const [studyProgram, classData, room, lecturer, course, timeSlot] =
     await Promise.all([
-      prisma.studyProgram.findUnique({
+      db.studyProgram.findUnique({
         where: { id: study_program_id },
         select: { id: true, status: true }
       }),
-      prisma.class.findUnique({
+      db.class.findUnique({
         where: { id: class_id },
         select: { id: true, status: true, study_program_id: true }
       }),
-      prisma.room.findUnique({
+      db.room.findUnique({
         where: { id: room_id },
         select: { id: true, status: true }
       }),
-      prisma.lecturer.findUnique({
+      db.lecturer.findUnique({
         where: { id: lecturer_id },
         select: {
           id: true,
@@ -416,11 +589,11 @@ const validateScheduleRelations = async ({
           }
         }
       }),
-      prisma.course.findUnique({
+      db.course.findUnique({
         where: { id: course_id },
         select: { id: true, status: true, study_program_id: true }
       }),
-      prisma.timeSlot.findUnique({
+      db.timeSlot.findUnique({
         where: { id: time_slot_id },
         select: { id: true }
       })
@@ -466,6 +639,486 @@ const validateScheduleRelations = async ({
 }
 
 const scheduleController = {
+  downloadTemplate: async (req, res) => {
+    try {
+      return res.download(SCHEDULE_TEMPLATE_PATH, 'format_schedule.xlsx')
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  uploadExcel: async (req, res) => {
+    try {
+      if (!req.file?.buffer) {
+        return error(res, 'Excel file is required', 400)
+      }
+
+      let parsedWorkbook = null
+
+      try {
+        parsedWorkbook = parseScheduleWorkbook(req.file.buffer)
+      } catch (parseError) {
+        return error(
+          res,
+          `Failed to read Excel file: ${parseError.message}`,
+          400
+        )
+      }
+
+      if (!parsedWorkbook) {
+        return error(res, 'Excel file does not contain a readable sheet', 400)
+      }
+
+      const {
+        study_program_name,
+        class_name,
+        semester,
+        rows: parsedRows,
+        sheet_name
+      } = parsedWorkbook
+
+      if (!study_program_name) {
+        return error(res, 'Study program name is missing in row 1', 400)
+      }
+
+      if (!class_name) {
+        return error(res, 'Class name is missing in row 2', 400)
+      }
+
+      if (!semester) {
+        return error(
+          res,
+          'Semester header is missing or invalid in row 3',
+          400
+        )
+      }
+
+      if (parsedRows.length === 0) {
+        return error(res, 'Excel file has no schedule rows to import', 400)
+      }
+
+      const studyProgram = await prisma.studyProgram.findFirst({
+        where: {
+          name: {
+            equals: study_program_name,
+            mode: 'insensitive'
+          }
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true
+        }
+      })
+
+      if (!studyProgram) {
+        return error(
+          res,
+          `Study program "${study_program_name}" was not found`,
+          400
+        )
+      }
+
+      const lecturerRole = await prisma.role.findFirst({
+        where: {
+          code: { in: LECTURER_ROLE_CODES }
+        },
+        select: { id: true, code: true }
+      })
+
+      if (!lecturerRole) {
+        return error(res, 'Lecturer role not found', 400)
+      }
+
+      const passwordHash = await bcrypt.hash(DEFAULT_LECTURER_PASSWORD, 10)
+      const skipped = []
+
+      const createdSchedules = await prisma.$transaction(async (tx) => {
+        let classData =
+          (await tx.class.findFirst({
+            where: {
+              study_program_id: studyProgram.id,
+              name: {
+                equals: class_name,
+                mode: 'insensitive'
+              }
+            }
+          })) ||
+          (await tx.class.create({
+            data: {
+              name: class_name,
+              study_program_id: studyProgram.id,
+              status: true
+            }
+          }))
+
+        const seenScheduleKeys = new Set()
+        const created = []
+
+        for (const row of parsedRows) {
+          const rowErrors = []
+
+          if (!row.day) {
+            rowErrors.push('Day is missing or invalid')
+          }
+
+          if (!row.time_range) {
+            rowErrors.push('Time range is missing or invalid')
+          }
+
+          if (!row.course_code) {
+            rowErrors.push('Course code is required')
+          }
+
+          if (!row.course_name) {
+            rowErrors.push('Course name is required')
+          }
+
+          if (!row.lecturer_name) {
+            rowErrors.push('Lecturer name is required')
+          }
+
+          if (!row.room_name) {
+            rowErrors.push('Room name is required')
+          }
+
+          if (rowErrors.length > 0) {
+            skipped.push({
+              row_number: row.row_number,
+              day: row.day || null,
+              course_code: row.course_code || null,
+              course_name: row.course_name || null,
+              lecturer_name: row.lecturer_name || null,
+              room_name: row.room_name || null,
+              reason: rowErrors.join('; ')
+            })
+            continue
+          }
+
+          const room = await tx.room.findFirst({
+            where: {
+              name: {
+                equals: row.room_name,
+                mode: 'insensitive'
+              }
+            },
+            select: {
+              id: true,
+              name: true
+            }
+          })
+
+          if (!room) {
+            skipped.push({
+              row_number: row.row_number,
+              day: row.day,
+              course_code: row.course_code,
+              course_name: row.course_name,
+              lecturer_name: row.lecturer_name,
+              room_name: row.room_name,
+              reason: `Room "${row.room_name}" was not found`
+            })
+            continue
+          }
+
+          const existingCourse =
+            (await tx.course.findFirst({
+              where: {
+                study_program_id: studyProgram.id,
+                code: row.course_code
+              }
+            })) ||
+            (await tx.course.findFirst({
+              where: {
+                study_program_id: studyProgram.id,
+                name: {
+                  equals: row.course_name,
+                  mode: 'insensitive'
+                }
+              }
+            }))
+
+          const course =
+            existingCourse ||
+            (await tx.course.create({
+              data: {
+                study_program_id: studyProgram.id,
+                code: row.course_code,
+                name: row.course_name,
+                semester
+              }
+            }))
+
+          let lecturer = null
+
+          if (
+            normalizeComparableText(row.lecturer_name) ===
+            normalizeComparableText(PLACEHOLDER_LECTURER_NAME)
+          ) {
+            lecturer = await tx.lecturer.findFirst({
+              where: {
+                user: {
+                  name: {
+                    equals: PLACEHOLDER_LECTURER_NAME,
+                    mode: 'insensitive'
+                  }
+                },
+                study_programs: {
+                  some: {
+                    study_program_id: studyProgram.id
+                  }
+                }
+              },
+              select: { id: true }
+            })
+
+            if (!lecturer) {
+              const identity = buildPlaceholderLecturerIdentity(
+                studyProgram.name
+              )
+              const existingUser = await tx.user.findFirst({
+                where: {
+                  OR: [
+                    { username: identity.username },
+                    { email: identity.email }
+                  ]
+                },
+                select: { id: true }
+              })
+
+              const user =
+                existingUser ||
+                (await tx.user.create({
+                  data: {
+                    name: PLACEHOLDER_LECTURER_NAME,
+                    username: identity.username,
+                    email: identity.email,
+                    password: passwordHash,
+                    role_id: lecturerRole.id
+                  }
+                }))
+
+              lecturer = await tx.lecturer.findFirst({
+                where: { user_id: user.id },
+                select: { id: true }
+              })
+
+              if (!lecturer) {
+                lecturer = await tx.lecturer.create({
+                  data: {
+                    nip: identity.nip,
+                    user_id: user.id,
+                    study_programs: {
+                      create: [{ study_program_id: studyProgram.id }]
+                    }
+                  },
+                  select: { id: true }
+                })
+              } else {
+                const existingAssignment =
+                  await tx.lecturerStudyProgram.findFirst({
+                    where: {
+                      lecturer_id: lecturer.id,
+                      study_program_id: studyProgram.id
+                    }
+                  })
+
+                if (!existingAssignment) {
+                  await tx.lecturerStudyProgram.create({
+                    data: {
+                      lecturer_id: lecturer.id,
+                      study_program_id: studyProgram.id
+                    }
+                  })
+                }
+              }
+            }
+          } else {
+            lecturer = await tx.lecturer.findFirst({
+              where: {
+                user: {
+                  name: {
+                    equals: row.lecturer_name,
+                    mode: 'insensitive'
+                  }
+                },
+                study_programs: {
+                  some: {
+                    study_program_id: studyProgram.id
+                  }
+                }
+              },
+              select: { id: true }
+            })
+          }
+
+          if (!lecturer) {
+            skipped.push({
+              row_number: row.row_number,
+              day: row.day,
+              course_code: row.course_code,
+              course_name: row.course_name,
+              lecturer_name: row.lecturer_name,
+              room_name: row.room_name,
+              reason: `Lecturer "${row.lecturer_name}" was not found`
+            })
+            continue
+          }
+
+          let timeSlot = await tx.timeSlot.findFirst({
+            where: {
+              start_time: row.time_range.start_time,
+              end_time: row.time_range.end_time
+            },
+            select: {
+              id: true
+            }
+          })
+
+          if (!timeSlot) {
+            const baseTimeSlotName = row.jam_ke
+              ? `Jam ke ${row.jam_ke}`
+              : `${row.time_range.start_time}-${row.time_range.end_time}`
+            const nameConflict = await tx.timeSlot.findFirst({
+              where: { name: baseTimeSlotName },
+              select: { id: true }
+            })
+            const timeSlotName = nameConflict
+              ? `${baseTimeSlotName} (${row.time_range.start_time}-${row.time_range.end_time})`
+              : baseTimeSlotName
+
+            timeSlot = await tx.timeSlot.create({
+              data: {
+                name: timeSlotName,
+                start_time: row.time_range.start_time,
+                end_time: row.time_range.end_time
+              },
+              select: {
+                id: true
+              }
+            })
+          }
+
+          const scheduleKey = [
+            studyProgram.id,
+            classData.id,
+            room.id,
+            lecturer.id,
+            course.id,
+            timeSlot.id,
+            row.day
+          ].join(':')
+
+          if (seenScheduleKeys.has(scheduleKey)) {
+            skipped.push({
+              row_number: row.row_number,
+              day: row.day,
+              course_code: row.course_code,
+              course_name: row.course_name,
+              lecturer_name: row.lecturer_name,
+              room_name: row.room_name,
+              reason: 'Duplicate schedule found in the uploaded file'
+            })
+            continue
+          }
+
+          const relationError = await validateScheduleRelations({
+            db: tx,
+            study_program_id: studyProgram.id,
+            class_id: classData.id,
+            room_id: room.id,
+            lecturer_id: lecturer.id,
+            course_id: course.id,
+            time_slot_id: timeSlot.id
+          })
+
+          if (relationError) {
+            skipped.push({
+              row_number: row.row_number,
+              day: row.day,
+              course_code: row.course_code,
+              course_name: row.course_name,
+              lecturer_name: row.lecturer_name,
+              room_name: row.room_name,
+              reason: relationError
+            })
+            continue
+          }
+
+          const conflict = await findScheduleConflict({
+            db: tx,
+            study_program_id: studyProgram.id,
+            class_id: classData.id,
+            room_id: room.id,
+            lecturer_id: lecturer.id,
+            course_id: course.id,
+            time_slot_id: timeSlot.id,
+            day: row.day
+          })
+
+          if (conflict) {
+            const reason =
+              conflict.type === 'room'
+                ? `Room "${row.room_name}" is already booked at ${row.time_range.start_time}-${row.time_range.end_time}`
+                : conflict.type === 'lecturer'
+                  ? `Lecturer "${row.lecturer_name}" already has a schedule at ${row.time_range.start_time}-${row.time_range.end_time}`
+                  : 'Schedule already exists'
+
+            skipped.push({
+              row_number: row.row_number,
+              day: row.day,
+              course_code: row.course_code,
+              course_name: row.course_name,
+              lecturer_name: row.lecturer_name,
+              room_name: row.room_name,
+              reason
+            })
+            continue
+          }
+
+          const createdSchedule = await tx.schedule.create({
+            data: {
+              study_program_id: studyProgram.id,
+              class_id: classData.id,
+              room_id: room.id,
+              lecturer_id: lecturer.id,
+              course_id: course.id,
+              time_slot_id: timeSlot.id,
+              day: row.day,
+              status: true
+            },
+            include: scheduleInclude
+          })
+
+          seenScheduleKeys.add(scheduleKey)
+          created.push(createdSchedule)
+        }
+
+        return created
+      })
+
+      return success(
+        res,
+        skipped.length > 0
+          ? 'Schedule import completed with some skipped rows'
+          : 'Schedule import completed successfully',
+        {
+          sheet_name,
+          study_program_name,
+          class_name,
+          semester,
+          created_count: createdSchedules.length,
+          skipped_count: skipped.length,
+          created: createdSchedules.map(formatSchedule),
+          skipped
+        },
+        201
+      )
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
   create: async (req, res) => {
     try {
       const {

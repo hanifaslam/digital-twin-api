@@ -3,11 +3,22 @@ const router = express.Router()
 const scheduleController = require('./schedule.controller')
 const { validate } = require('../../common/middlewares/validate.middleware')
 const {
+  uploadExcel,
+  handleUploadError
+} = require('../../common/middlewares/upload.middleware')
+const {
   createScheduleSchema,
   updateScheduleSchema
 } = require('./schedule.schema')
 
 router.post('/', validate(createScheduleSchema), scheduleController.create)
+router.get('/template', scheduleController.downloadTemplate)
+router.post(
+  '/upload',
+  uploadExcel.single('file'),
+  handleUploadError,
+  scheduleController.uploadExcel
+)
 router.get('/days', scheduleController.getAllDays)
 router.get('/all', scheduleController.getAllActive)
 router.get('/grouped', scheduleController.getGrouped)

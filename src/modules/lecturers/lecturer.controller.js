@@ -1,3 +1,6 @@
+const bcrypt = require('bcryptjs')
+const path = require('path')
+const XLSX = require('xlsx')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const redisClient = require('../../config/redis')
@@ -10,6 +13,149 @@ const { emitActivityLogUpdate } = require('../../config/socket')
 const normalizeStudyProgramIds = (studyProgramIds) => [
   ...new Set((studyProgramIds || []).map((id) => id?.trim()).filter(Boolean))
 ]
+
+const LECTURER_ROLE_CODES = ['DSN', 'DOSEN']
+const DEFAULT_LECTURER_PASSWORD = 'Password123!'
+const LECTURER_EMAIL_DOMAIN = 'polines.ac.id'
+const LECTURER_TEMPLATE_PATH = path.join(
+  process.cwd(),
+  'lecturer_upload_template.xlsx'
+)
+const LECTURER_TEMPLATE_HEADERS = {
+  nip: ['nip', 'nidn', 'nomor induk'],
+  name: ['nama', 'nama dosen', 'lecturer name', 'name'],
+  study_program_codes: [
+    'kode program studi',
+    'kode prodi',
+    'study program code',
+    'study_program_code',
+    'study_program_codes'
+  ],
+  phone_number: [
+    'no hp',
+    'nomor hp',
+    'phone',
+    'phone number',
+    'phone_number'
+  ]
+}
+
+const normalizeHeader = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+
+const findColumnValue = (row = {}, aliases = []) => {
+  const normalizedEntries = Object.entries(row).map(([key, value]) => [
+    normalizeHeader(key),
+    value
+  ])
+
+  for (const alias of aliases) {
+    const found = normalizedEntries.find(([key]) => key === alias)
+    if (found) {
+      return found[1]
+    }
+  }
+
+  return undefined
+}
+
+const normalizeName = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+
+const buildNameSlug = (value) => {
+  const normalized = normalizeName(value)
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '.')
+    .replace(/^\.+|\.+$/g, '')
+
+  return normalized || 'lecturer'
+}
+
+const splitStudyProgramCodes = (value) => [
+  ...new Set(
+    String(value || '')
+      .split(',')
+      .map((item) => item.trim().toUpperCase())
+      .filter(Boolean)
+  )
+]
+
+const ensureUniqueIdentity = async (tx, baseSlug) => {
+  let suffix = 0
+
+  while (true) {
+    const username =
+      suffix === 0 ? baseSlug : `${baseSlug}${String(suffix + 1)}`
+    const emailLocalPart =
+      suffix === 0 ? baseSlug : `${baseSlug}${String(suffix + 1)}`
+    const email = `${emailLocalPart}@${LECTURER_EMAIL_DOMAIN}`
+
+    const existingUser = await tx.user.findFirst({
+      where: {
+        OR: [{ username }, { email }]
+      },
+      select: { id: true }
+    })
+
+    if (!existingUser) {
+      return { username, email }
+    }
+
+    suffix += 1
+  }
+}
+
+const parseLecturerWorkbookRows = (fileBuffer) => {
+  const workbook = XLSX.read(fileBuffer, { type: 'buffer' })
+  const sheetName = workbook.SheetNames[0]
+
+  if (!sheetName) {
+    return []
+  }
+
+  const worksheet = workbook.Sheets[sheetName]
+  const rows = XLSX.utils.sheet_to_json(worksheet, {
+    defval: '',
+    raw: false
+  })
+
+  return rows
+    .map((row, index) => {
+      const nip = String(
+        findColumnValue(row, LECTURER_TEMPLATE_HEADERS.nip) || ''
+      ).trim()
+      const name = normalizeName(
+        findColumnValue(row, LECTURER_TEMPLATE_HEADERS.name)
+      )
+      const studyProgramCodes = splitStudyProgramCodes(
+        findColumnValue(row, LECTURER_TEMPLATE_HEADERS.study_program_codes)
+      )
+      const phoneNumber = String(
+        findColumnValue(row, LECTURER_TEMPLATE_HEADERS.phone_number) || ''
+      ).trim()
+
+      return {
+        row_number: index + 2,
+        nip,
+        name,
+        study_program_codes: studyProgramCodes,
+        phone_number: phoneNumber || null
+      }
+    })
+    .filter(
+      (row) =>
+        row.nip ||
+        row.name ||
+        row.study_program_codes.length > 0 ||
+        row.phone_number
+    )
+}
 
 const includeLecturerRelations = {
   study_programs: {
@@ -44,7 +190,28 @@ const formatStudyProgramsForShow = (studyPrograms = []) =>
 const formatStudyProgramsForList = (studyPrograms = []) =>
   studyPrograms.map((item) => item.study_program.name)
 
+const formatImportedLecturer = (lecturer) => ({
+  id: lecturer.id,
+  nip: lecturer.nip,
+  name: lecturer.user?.name || null,
+  username: lecturer.user?.username || null,
+  email: lecturer.user?.email || null,
+  phone_number: lecturer.phone_number,
+  study_programs: formatStudyProgramsForShow(lecturer.study_programs)
+})
+
 const lecturerController = {
+  downloadTemplate: async (req, res) => {
+    try {
+      return res.download(
+        LECTURER_TEMPLATE_PATH,
+        'lecturer_upload_template.xlsx'
+      )
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
   create: async (req, res) => {
     try {
       const { nip, study_program_ids, user_id, phone_number } = req.body || {}
@@ -112,6 +279,216 @@ const lecturerController = {
         .catch((err) => console.error('Redis Del Error:', err))
 
       return success(res, 'success', null, 201)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  uploadExcel: async (req, res) => {
+    try {
+      if (!req.file?.buffer) {
+        return error(res, 'Excel file is required', 400)
+      }
+
+      let rows = []
+
+      try {
+        rows = parseLecturerWorkbookRows(req.file.buffer)
+      } catch (parseError) {
+        return error(
+          res,
+          `Failed to read Excel file: ${parseError.message}`,
+          400
+        )
+      }
+
+      if (rows.length === 0) {
+        return error(res, 'Excel file has no lecturer rows to import', 400)
+      }
+
+      const duplicateNipsInFile = new Set()
+      const seenNips = new Set()
+
+      rows.forEach((row) => {
+        if (!row.nip) return
+        if (seenNips.has(row.nip)) {
+          duplicateNipsInFile.add(row.nip)
+          return
+        }
+        seenNips.add(row.nip)
+      })
+
+      const role = await prisma.role.findFirst({
+        where: {
+          code: { in: LECTURER_ROLE_CODES }
+        },
+        select: { id: true, code: true }
+      })
+
+      if (!role) {
+        return error(res, 'Lecturer role not found', 400)
+      }
+
+      const uniqueStudyProgramCodes = [
+        ...new Set(
+          rows.flatMap((row) => row.study_program_codes).filter(Boolean)
+        )
+      ]
+      const studyPrograms = await prisma.studyProgram.findMany({
+        where: {
+          code: { in: uniqueStudyProgramCodes }
+        },
+        select: {
+          id: true,
+          code: true,
+          name: true
+        }
+      })
+      const studyProgramMap = new Map(
+        studyPrograms.map((item) => [item.code.toUpperCase(), item])
+      )
+
+      const existingLecturers = await prisma.lecturer.findMany({
+        where: {
+          nip: { in: rows.map((row) => row.nip).filter(Boolean) }
+        },
+        select: {
+          nip: true,
+          user: {
+            select: {
+              name: true
+            }
+          }
+        }
+      })
+      const existingLecturerMap = new Map(
+        existingLecturers.map((item) => [item.nip, item])
+      )
+
+      const skipped = []
+      const validRows = []
+
+      rows.forEach((row) => {
+        const rowErrors = []
+
+        if (!row.nip) {
+          rowErrors.push('NIP is required')
+        }
+
+        if (!row.name) {
+          rowErrors.push('Name is required')
+        }
+
+        if (row.study_program_codes.length === 0) {
+          rowErrors.push('At least one study program code is required')
+        }
+
+        if (row.nip && duplicateNipsInFile.has(row.nip)) {
+          rowErrors.push('Duplicate NIP found in the uploaded file')
+        }
+
+        const missingStudyPrograms = row.study_program_codes.filter(
+          (code) => !studyProgramMap.has(code)
+        )
+
+        if (missingStudyPrograms.length > 0) {
+          rowErrors.push(
+            `Study program code not found: ${missingStudyPrograms.join(', ')}`
+          )
+        }
+
+        const existingLecturer = existingLecturerMap.get(row.nip)
+
+        if (existingLecturer) {
+          skipped.push({
+            row_number: row.row_number,
+            nip: row.nip,
+            name: row.name,
+            reason: `Lecturer with NIP ${row.nip} already exists`
+          })
+          return
+        }
+
+        if (rowErrors.length > 0) {
+          skipped.push({
+            row_number: row.row_number,
+            nip: row.nip || null,
+            name: row.name || null,
+            reason: rowErrors.join('; ')
+          })
+          return
+        }
+
+        validRows.push({
+          ...row,
+          study_program_ids: row.study_program_codes.map(
+            (code) => studyProgramMap.get(code).id
+          )
+        })
+      })
+
+      if (validRows.length === 0) {
+        return error(
+          res,
+          'No valid lecturer rows found in the uploaded file',
+          400
+        )
+      }
+
+      const passwordHash = await bcrypt.hash(DEFAULT_LECTURER_PASSWORD, 10)
+      const createdLecturers = await prisma.$transaction(async (tx) => {
+        const created = []
+
+        for (const row of validRows) {
+          const baseSlug = buildNameSlug(row.name)
+          const { username, email } = await ensureUniqueIdentity(tx, baseSlug)
+
+          const user = await tx.user.create({
+            data: {
+              name: row.name,
+              username,
+              email,
+              password: passwordHash,
+              role_id: role.id
+            }
+          })
+
+          const lecturer = await tx.lecturer.create({
+            data: {
+              nip: row.nip,
+              user_id: user.id,
+              phone_number: row.phone_number,
+              study_programs: {
+                create: row.study_program_ids.map((study_program_id) => ({
+                  study_program_id
+                }))
+              }
+            },
+            include: includeLecturerRelations
+          })
+
+          created.push(lecturer)
+        }
+
+        return created
+      })
+
+      const responseData = {
+        default_password: DEFAULT_LECTURER_PASSWORD,
+        auto_email_domain: LECTURER_EMAIL_DOMAIN,
+        lecturer_role_code: role.code,
+        created_count: createdLecturers.length,
+        skipped_count: skipped.length,
+        created: createdLecturers.map(formatImportedLecturer),
+        skipped
+      }
+
+      const message =
+        skipped.length > 0
+          ? 'Lecturer import completed with some skipped rows'
+          : 'Lecturer import completed successfully'
+
+      return success(res, message, responseData, 201)
     } catch (err) {
       return error(res, err.message, 500)
     }

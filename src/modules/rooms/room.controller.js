@@ -1,7 +1,101 @@
+const path = require('path')
+const XLSX = require('xlsx')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
 const { getJakartaScheduleContext } = require('../../utils/date')
+
+const ROOM_TEMPLATE_PATH = path.join(
+  process.cwd(),
+  'room_building_upload_template.xlsx'
+)
+const ROOM_TEMPLATE_HEADERS = {
+  building_name: ['building name', 'building', 'gedung'],
+  building_code: ['building code', 'kode gedung', 'code'],
+  floor_name: ['floor name', 'floor', 'lantai'],
+  room_name: ['room name', 'room', 'ruang'],
+  status: ['status']
+}
+
+const normalizeHeader = (value) =>
+  String(value || '')
+    .trim()
+    .toLowerCase()
+
+const findColumnValue = (row = {}, aliases = []) => {
+  const normalizedEntries = Object.entries(row).map(([key, value]) => [
+    normalizeHeader(key),
+    value
+  ])
+
+  for (const alias of aliases) {
+    const found = normalizedEntries.find(([key]) => key === alias)
+    if (found) {
+      return found[1]
+    }
+  }
+
+  return undefined
+}
+
+const normalizeValue = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+
+const normalizeStatus = (value) => {
+  const normalized = String(value || '')
+    .trim()
+    .toLowerCase()
+
+  if (!normalized) return true
+  if (['true', '1', 'active', 'aktif', 'yes'].includes(normalized)) return true
+  if (['false', '0', 'inactive', 'nonaktif', 'no'].includes(normalized)) {
+    return false
+  }
+
+  return null
+}
+
+const parseRoomWorkbookRows = (fileBuffer) => {
+  const workbook = XLSX.read(fileBuffer, { type: 'buffer' })
+  const sheetName = workbook.SheetNames[0]
+
+  if (!sheetName) {
+    return []
+  }
+
+  const worksheet = workbook.Sheets[sheetName]
+  const rows = XLSX.utils.sheet_to_json(worksheet, {
+    defval: '',
+    raw: false
+  })
+
+  return rows
+    .map((row, index) => ({
+      row_number: index + 2,
+      building_name: normalizeValue(
+        findColumnValue(row, ROOM_TEMPLATE_HEADERS.building_name)
+      ),
+      building_code: normalizeValue(
+        findColumnValue(row, ROOM_TEMPLATE_HEADERS.building_code)
+      ).toUpperCase(),
+      floor_name: normalizeValue(
+        findColumnValue(row, ROOM_TEMPLATE_HEADERS.floor_name)
+      ),
+      room_name: normalizeValue(
+        findColumnValue(row, ROOM_TEMPLATE_HEADERS.room_name)
+      ),
+      status: normalizeStatus(findColumnValue(row, ROOM_TEMPLATE_HEADERS.status))
+    }))
+    .filter(
+      (row) =>
+        row.building_name ||
+        row.building_code ||
+        row.floor_name ||
+        row.room_name
+    )
+}
 
 const getRoomDependencyCount = (room) => {
   const schedules = room?._count?.schedules || 0
@@ -22,6 +116,14 @@ const withDeactivationFlag = (room) => {
 }
 
 const roomController = {
+  downloadTemplate: async (req, res) => {
+    try {
+      return res.download(ROOM_TEMPLATE_PATH, 'room_building_upload_template.xlsx')
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
   getAllRooms: async (req, res) => {
     try {
       const { building_id } = req.query || {}
@@ -97,6 +199,202 @@ const roomController = {
       })
 
       return success(res, 'success', null, 201)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  uploadExcel: async (req, res) => {
+    try {
+      if (!req.file?.buffer) {
+        return error(res, 'Excel file is required', 400)
+      }
+
+      let rows = []
+
+      try {
+        rows = parseRoomWorkbookRows(req.file.buffer)
+      } catch (parseError) {
+        return error(
+          res,
+          `Failed to read Excel file: ${parseError.message}`,
+          400
+        )
+      }
+
+      if (rows.length === 0) {
+        return error(res, 'Excel file has no room rows to import', 400)
+      }
+
+      const skipped = []
+      const validRows = []
+      const duplicateKeysInFile = new Set()
+      const seenKeys = new Set()
+
+      rows.forEach((row) => {
+        const rowErrors = []
+
+        if (!row.building_name) {
+          rowErrors.push('Building name is required')
+        }
+
+        if (!row.floor_name) {
+          rowErrors.push('Floor name is required')
+        }
+
+        if (!row.room_name) {
+          rowErrors.push('Room name is required')
+        }
+
+        if (row.status === null) {
+          rowErrors.push('Status must be a boolean-like value')
+        }
+
+        const uniqueKey = [
+          row.building_name.toLowerCase(),
+          row.floor_name.toLowerCase(),
+          row.room_name.toLowerCase()
+        ].join('::')
+
+        if (seenKeys.has(uniqueKey)) {
+          duplicateKeysInFile.add(uniqueKey)
+        } else {
+          seenKeys.add(uniqueKey)
+        }
+
+        if (duplicateKeysInFile.has(uniqueKey)) {
+          rowErrors.push('Duplicate room found in the uploaded file')
+        }
+
+        if (rowErrors.length > 0) {
+          skipped.push({
+            row_number: row.row_number,
+            building_name: row.building_name || null,
+            floor_name: row.floor_name || null,
+            room_name: row.room_name || null,
+            reason: rowErrors.join('; ')
+          })
+          return
+        }
+
+        validRows.push(row)
+      })
+
+      if (validRows.length === 0) {
+        return error(res, 'No valid room rows found in the uploaded file', 400)
+      }
+
+      const createdRooms = await prisma.$transaction(async (tx) => {
+        const created = []
+
+        for (const row of validRows) {
+          let building = null
+
+          if (row.building_code) {
+            building = await tx.building.findFirst({
+              where: {
+                OR: [
+                  { code: row.building_code },
+                  { name: row.building_name }
+                ]
+              }
+            })
+          } else {
+            building = await tx.building.findFirst({
+              where: { name: row.building_name }
+            })
+          }
+
+          if (!building) {
+            building = await tx.building.create({
+              data: {
+                name: row.building_name,
+                code: row.building_code || null,
+                status: true
+              }
+            })
+          }
+
+          const floor =
+            (await tx.floor.findFirst({
+              where: { name: row.floor_name }
+            })) ||
+            (await tx.floor.create({
+              data: {
+                name: row.floor_name,
+                status: true
+              }
+            }))
+
+          const existingRoom = await tx.room.findFirst({
+            where: {
+              name: row.room_name,
+              building_id: building.id
+            },
+            include: {
+              building: {
+                select: { id: true, name: true, code: true }
+              },
+              floor: {
+                select: { id: true, name: true }
+              }
+            }
+          })
+
+          if (existingRoom) {
+            skipped.push({
+              row_number: row.row_number,
+              building_name: row.building_name,
+              floor_name: row.floor_name,
+              room_name: row.room_name,
+              reason: 'Room already exists in this building'
+            })
+            continue
+          }
+
+          const room = await tx.room.create({
+            data: {
+              name: row.room_name,
+              building_id: building.id,
+              floor_id: floor.id,
+              status: row.status
+            },
+            include: {
+              building: {
+                select: { id: true, name: true, code: true }
+              },
+              floor: {
+                select: { id: true, name: true }
+              }
+            }
+          })
+
+          created.push(room)
+        }
+
+        return created
+      })
+
+      return success(
+        res,
+        skipped.length > 0
+          ? 'Room import completed with some skipped rows'
+          : 'Room import completed successfully',
+        {
+          created_count: createdRooms.length,
+          skipped_count: skipped.length,
+          created: createdRooms.map((room) => ({
+            id: room.id,
+            room_name: room.name,
+            building_name: room.building?.name || null,
+            building_code: room.building?.code || null,
+            floor_name: room.floor?.name || null,
+            status: room.status
+          })),
+          skipped
+        },
+        201
+      )
     } catch (err) {
       return error(res, err.message, 500)
     }
