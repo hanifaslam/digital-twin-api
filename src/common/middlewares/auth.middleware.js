@@ -2,6 +2,7 @@ const jwt = require('jsonwebtoken')
 const prisma = require('../../config/prisma')
 const { error } = require('../../config/response')
 const redisClient = require('../../config/redis')
+const { readCookieByCandidates } = require('../utils/auth-cookie')
 
 const getRoleIdentity = (role = {}) =>
   (role.code || role.name || '')
@@ -14,7 +15,8 @@ const authMiddleware = async (req, res, next) => {
   try {
     // 1. Cek token di Cookie (Utama) atau Header (Cadangan)
     const token =
-      req.cookies.accessToken || req.headers.authorization?.split(' ')[1]
+      readCookieByCandidates(req, 'accessToken') ||
+      req.headers.authorization?.split(' ')[1]
 
     if (!token) return error(res, 'Unauthorized - Access token missing', 401)
 

@@ -7,6 +7,12 @@ const path = require('path')
 const s3 = require('../../config/s3')
 const { PutObjectCommand } = require('@aws-sdk/client-s3')
 const redisClient = require('../../config/redis')
+const {
+  buildCookieName,
+  getAuthApp,
+  getCookieNameCandidates,
+  readCookieByCandidates
+} = require('../../common/utils/auth-cookie')
 const S3_BUCKET = process.env.S3_BUCKET
 const S3_ENDPOINT = process.env.S3_ENDPOINT
 
@@ -185,6 +191,9 @@ const login = async (req, res) => {
     if (!isMatch) return error(res, 'Invalid username or password', 401)
 
     const { accessToken, refreshToken } = generateTokens(user)
+    const authApp = getAuthApp(req)
+    const accessCookieName = buildCookieName('accessToken', authApp)
+    const refreshCookieName = buildCookieName('refreshToken', authApp)
 
     const cookieOptions = {
       httpOnly: true,
@@ -193,12 +202,12 @@ const login = async (req, res) => {
       path: '/'
     }
 
-    res.cookie('accessToken', accessToken, {
+    res.cookie(accessCookieName, accessToken, {
       ...cookieOptions,
       maxAge: 15 * 60 * 1000
     })
 
-    res.cookie('refreshToken', refreshToken, {
+    res.cookie(refreshCookieName, refreshToken, {
       ...cookieOptions,
       maxAge: remember_me ? 7 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000
     })
@@ -225,7 +234,7 @@ const login = async (req, res) => {
 
 const refreshToken = async (req, res) => {
   try {
-    const token = req.cookies.refreshToken
+    const token = readCookieByCandidates(req, 'refreshToken')
     if (!token) return error(res, 'Refresh token missing', 401)
 
     jwt.verify(token, process.env.JWT_REFRESH_SECRET, async (err, decoded) => {
@@ -244,8 +253,11 @@ const refreshToken = async (req, res) => {
         { expiresIn: '15m' }
       )
 
+      const authApp = getAuthApp(req)
+      const accessCookieName = buildCookieName('accessToken', authApp)
+
       // Update Access Token Cookie
-      res.cookie('accessToken', accessToken, {
+      res.cookie(accessCookieName, accessToken, {
         httpOnly: true,
         secure: true,
         sameSite: 'none',
@@ -360,8 +372,12 @@ const logout = (req, res) => {
     path: '/'
   }
 
-  res.clearCookie('accessToken', cookieOptions)
-  res.clearCookie('refreshToken', cookieOptions)
+  getCookieNameCandidates('accessToken', req).forEach((cookieName) => {
+    res.clearCookie(cookieName, cookieOptions)
+  })
+  getCookieNameCandidates('refreshToken', req).forEach((cookieName) => {
+    res.clearCookie(cookieName, cookieOptions)
+  })
 
   return success(res, 'success')
 }
