@@ -16,11 +16,15 @@ COPY *.xlsx ./
 RUN apk add --no-cache curl
 
 ENV NODE_ENV=production
-ENV PORT=5000
+ENV PORT=3000
+ENV LLAMA_API_URL=""
+ENV LLAMA_API_KEY=""
+ENV LLAMA_MODEL=""
+ENV LLAMA_PROVIDER_NAME="openai-compatible"
 
-EXPOSE 5000
+EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:5000/health || exit 1
+  CMD curl -f http://localhost:3000/health || exit 1
 
 CMD ["sh", "-c", "npx prisma migrate deploy && node src/app.js"]

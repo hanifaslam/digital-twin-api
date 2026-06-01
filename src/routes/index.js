@@ -23,6 +23,7 @@ const faceRecognitionRoutes = require('../modules/face-recognition/face-recognit
 const sensorRoutes = require('../modules/sensors/sensor.routes')
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes')
 const dashboardController = require('../modules/dashboard/dashboard.controller')
+const chatbotRoutes = require('../modules/chatbot/chatbot.routes')
 
 router.use('/auth', authRoutes)
 router.get('/dashboard/buildings', buildingController.getAllBuildings)
@@ -38,6 +39,7 @@ router.get(
   lecturerController.getPublicLecturers
 )
 router.get('/dashboard/rooms/:id/schedules', roomController.getPublicSchedules)
+router.use('/dashboard/chatbot', chatbotRoutes)
 
 router.use('/users', authMiddleware, userRoutes)
 router.use('/lecturers', authMiddleware, lecturerRoutes)
