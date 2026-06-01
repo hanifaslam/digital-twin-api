@@ -1044,18 +1044,70 @@ const dashboardController = {
         orderBy: [{ time_slot: { start_time: 'asc' } }, { created_at: 'asc' }]
       })
 
-      const items = schedules.map((item) => ({
-        schedule_id: item.id,
-        start_time: item.time_slot?.start_time || null,
-        end_time: item.time_slot?.end_time || null,
-        class_name: item.course?.name || null,
-        class_code: item.class?.name || null,
-        lecturer_name: item.lecturer?.user?.name || null,
-        room_id: item.room?.id || null,
-        room_name: item.room?.name || null,
-        building_id: item.room?.building?.id || null,
-        building_name: item.room?.building?.name || null
-      }))
+      const { parts } = getCurrentContext()
+      const { start: startOfDay, end: endOfDay } = getJakartaDayRange(
+        parts.year,
+        parts.month,
+        parts.day
+      )
+      const lecturerIds = [
+        ...new Set(
+          schedules
+            .map((item) => item.lecturer?.id || item.lecturer_id)
+            .filter(Boolean)
+        )
+      ]
+
+      const attendanceToday = await prisma.attendance.findMany({
+        where: {
+          lecturer_id: { in: lecturerIds.length ? lecturerIds : [''] },
+          check_in_at: {
+            gte: startOfDay,
+            lte: endOfDay
+          }
+        },
+        orderBy: { check_in_at: 'asc' }
+      })
+
+      const attendanceMap = new Map()
+      attendanceToday.forEach((item) => {
+        const key = `${item.lecturer_id}:${item.room_id || ''}`
+        if (!attendanceMap.has(key)) {
+          attendanceMap.set(key, item)
+        }
+      })
+
+      const items = schedules.map((item) => {
+        const lecturerId = item.lecturer?.id || item.lecturer_id
+        const key = `${lecturerId}:${item.room_id || ''}`
+        const attendance = attendanceMap.get(key)
+
+        let status = 'WAITING'
+        if (attendance) {
+          const attendedParts = getJakartaParts(attendance.check_in_at)
+          const checkInMinutes = attendedParts.hour * 60 + attendedParts.minute
+          const [startHour, startMinute] = (item.time_slot?.start_time || '00:00')
+            .split(':')
+            .map(Number)
+          const startMinutes = startHour * 60 + startMinute
+
+          status = checkInMinutes > startMinutes ? 'LATE' : 'PRESENT'
+        }
+
+        return {
+          schedule_id: item.id,
+          start_time: item.time_slot?.start_time || null,
+          end_time: item.time_slot?.end_time || null,
+          class_name: item.course?.name || null,
+          class_code: item.class?.name || null,
+          lecturer_name: item.lecturer?.user?.name || null,
+          room_id: item.room?.id || null,
+          room_name: item.room?.name || null,
+          building_id: item.room?.building?.id || null,
+          building_name: item.room?.building?.name || null,
+          status
+        }
+      })
 
       return success(res, 'success', items)
     } catch (err) {
