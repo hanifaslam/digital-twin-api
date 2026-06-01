@@ -990,6 +990,7 @@ const dashboardController = {
 
       const devices = await prisma.device.findMany({
         where: {
+          status: true,
           room: {
             building_id: selectedBuildingId
           }
