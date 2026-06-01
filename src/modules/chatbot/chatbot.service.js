@@ -413,7 +413,7 @@ const getRoomSnapshot = async (roomId) => {
     room_name: room.name,
     building_id: room.building?.id || null,
     building_name: room.building?.name || null,
-    latest_power,
+    latest_power: latestPower,
     latest_environment: latestEnvironment,
     devices
   }
