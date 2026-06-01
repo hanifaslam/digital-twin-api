@@ -78,6 +78,128 @@ const getJakartaMonthRange = (year, month) => {
   return { start, end }
 }
 
+const DAY_TO_WEEKDAY = {
+  [Day.MONDAY]: 1,
+  [Day.TUESDAY]: 2,
+  [Day.WEDNESDAY]: 3,
+  [Day.THURSDAY]: 4,
+  [Day.FRIDAY]: 5
+}
+
+const getMinutesFromTime = (time = '00:00') => {
+  const [hour, minute] = time.split(':').map(Number)
+  return (hour || 0) * 60 + (minute || 0)
+}
+
+const getScheduleDurationHours = (schedule) => {
+  const start = getMinutesFromTime(schedule.time_slot?.start_time)
+  const end = getMinutesFromTime(schedule.time_slot?.end_time)
+  return Math.max(end - start, 0) / 60
+}
+
+const enumerateScheduleOccurrences = (schedule, startDate, endDate) => {
+  const targetWeekday = DAY_TO_WEEKDAY[schedule.day]
+  if (!targetWeekday) return []
+
+  const occurrences = []
+  const cursor = new Date(startDate)
+
+  while (cursor <= endDate) {
+    const cursorParts = getJakartaParts(cursor)
+    const cursorStart = toUtcFromJakarta(
+      cursorParts.year,
+      cursorParts.month,
+      cursorParts.day,
+      0,
+      0,
+      0
+    )
+
+    if (cursorStart < startDate) {
+      cursor.setUTCDate(cursor.getUTCDate() + 1)
+      continue
+    }
+
+    const weekday = new Date(cursorStart).getUTCDay()
+    if (weekday === targetWeekday) {
+      const [startHour, startMinute] = (schedule.time_slot?.start_time || '00:00')
+        .split(':')
+        .map(Number)
+      const [endHour, endMinute] = (schedule.time_slot?.end_time || '00:00')
+        .split(':')
+        .map(Number)
+
+      const startAt = toUtcFromJakarta(
+        cursorParts.year,
+        cursorParts.month,
+        cursorParts.day,
+        startHour,
+        startMinute,
+        0
+      )
+      const endAt = toUtcFromJakarta(
+        cursorParts.year,
+        cursorParts.month,
+        cursorParts.day,
+        endHour,
+        endMinute,
+        0
+      )
+
+      occurrences.push({
+        schedule_id: schedule.id,
+        room_id: schedule.room_id,
+        start_at: startAt,
+        end_at: endAt,
+        duration_hours: getScheduleDurationHours(schedule)
+      })
+    }
+
+    cursor.setUTCDate(cursor.getUTCDate() + 1)
+  }
+
+  return occurrences
+}
+
+const findAttendanceOccurrenceIndex = (occurrences, attendance, usedIndexes) => {
+  const attendanceParts = getJakartaParts(attendance.check_in_at)
+  const attendanceDateKey = `${attendanceParts.year}-${attendanceParts.month}-${attendanceParts.day}`
+
+  const buildDateKey = (date) => {
+    const parts = getJakartaParts(date)
+    return `${parts.year}-${parts.month}-${parts.day}`
+  }
+
+  const candidates = occurrences
+    .map((occurrence, index) => ({ occurrence, index }))
+    .filter(({ occurrence, index }) => {
+      if (usedIndexes.has(index)) return false
+      if (buildDateKey(occurrence.start_at) !== attendanceDateKey) return false
+      if (attendance.room_id && occurrence.room_id !== attendance.room_id) return false
+      return attendance.check_in_at <= occurrence.end_at
+    })
+    .sort((a, b) => a.occurrence.start_at - b.occurrence.start_at)
+
+  if (candidates.length) {
+    return candidates[0].index
+  }
+
+  if (!attendance.room_id) {
+    const fallback = occurrences
+      .map((occurrence, index) => ({ occurrence, index }))
+      .filter(({ occurrence, index }) => {
+        if (usedIndexes.has(index)) return false
+        if (buildDateKey(occurrence.start_at) !== attendanceDateKey) return false
+        return attendance.check_in_at <= occurrence.end_at
+      })
+      .sort((a, b) => a.occurrence.start_at - b.occurrence.start_at)
+
+    return fallback[0]?.index ?? -1
+  }
+
+  return -1
+}
+
 const formatSyncLabel = (date) => {
   if (!date) return 'No Data'
 
@@ -633,7 +755,13 @@ const dashboardController = {
             select: { name: true }
           },
           room: {
-            select: { id: true, name: true }
+            select: {
+              id: true,
+              name: true,
+              building: {
+                select: { name: true }
+              }
+            }
           },
           lecturer: {
             select: {
@@ -693,10 +821,11 @@ const dashboardController = {
 
         return {
           schedule_id: item.id,
-          class_name: item.course?.name || null,
+          course_name: item.course?.name || null,
           class_code: item.class?.name || null,
           lecturer_name: item.lecturer?.user?.name || null,
           room_name: item.room?.name || null,
+          building_name: item.room?.building?.name || null,
           start_time: item.time_slot?.start_time || null,
           end_time: item.time_slot?.end_time || null,
           status
@@ -855,22 +984,35 @@ const dashboardController = {
 
   getMyTeachingSchedule: async (req, res) => {
     try {
-      const lecturerId = req.user?.lecturer?.id
-      if (!lecturerId) {
-        return success(res, 'success', [])
-      }
-
+      const roleIdentity = getRoleIdentity(req.user?.role)
       const { currentDay } = getCurrentContext()
       if (!currentDay) {
         return success(res, 'success', [])
       }
 
+      let scheduleWhere = {
+        day: currentDay,
+        status: true
+      }
+
+      if (['SA', 'SUPER_ADMIN'].includes(roleIdentity)) {
+        scheduleWhere = {
+          ...scheduleWhere
+        }
+      } else if (req.user?.lecturer?.id) {
+        scheduleWhere = {
+          ...scheduleWhere,
+          lecturer_id: req.user.lecturer.id
+        }
+      } else if (req.user?.helper?.id) {
+        const buildingIds = await getScopedBuildingIds(req.user)
+        scheduleWhere = buildScopedWhere(buildingIds, scheduleWhere)
+      } else {
+        return success(res, 'success', [])
+      }
+
       const schedules = await prisma.schedule.findMany({
-        where: {
-          lecturer_id: lecturerId,
-          day: currentDay,
-          status: true
-        },
+        where: scheduleWhere,
         include: {
           course: {
             select: { name: true }
@@ -879,7 +1021,21 @@ const dashboardController = {
             select: { name: true }
           },
           room: {
-            select: { id: true, name: true }
+            select: {
+              id: true,
+              name: true,
+              building: {
+                select: { id: true, name: true }
+              }
+            }
+          },
+          lecturer: {
+            select: {
+              id: true,
+              user: {
+                select: { name: true }
+              }
+            }
           },
           time_slot: {
             select: { start_time: true, end_time: true }
@@ -894,8 +1050,11 @@ const dashboardController = {
         end_time: item.time_slot?.end_time || null,
         class_name: item.course?.name || null,
         class_code: item.class?.name || null,
+        lecturer_name: item.lecturer?.user?.name || null,
         room_id: item.room?.id || null,
-        room_name: item.room?.name || null
+        room_name: item.room?.name || null,
+        building_id: item.room?.building?.id || null,
+        building_name: item.room?.building?.name || null
       }))
 
       return success(res, 'success', items)
@@ -951,14 +1110,40 @@ const dashboardController = {
         })
       ])
 
-      const classesTaught = attendances.length
-      const scheduleCount = schedules.length
-      const absences = Math.max(scheduleCount - classesTaught, 0)
+      const allOccurrences = schedules.flatMap((schedule) =>
+        enumerateScheduleOccurrences(schedule, startOfSemester, endOfToday)
+      )
+      const completedOccurrences = allOccurrences.filter(
+        (occurrence) => occurrence.end_at <= new Date()
+      )
 
-      const onTimeCount = attendances.filter((item) => {
-        const p = getJakartaParts(item.check_in_at)
-        const minutes = p.hour * 60 + p.minute
-        return minutes <= 7 * 60 + 30
+      const usedOccurrenceIndexes = new Set()
+      const matchedAttendances = []
+
+      attendances.forEach((attendance) => {
+        const index = findAttendanceOccurrenceIndex(
+          completedOccurrences,
+          attendance,
+          usedOccurrenceIndexes
+        )
+
+        if (index === -1) return
+
+        usedOccurrenceIndexes.add(index)
+        matchedAttendances.push({
+          attendance,
+          occurrence: completedOccurrences[index]
+        })
+      })
+
+      const classesTaught = matchedAttendances.length
+      const absences = Math.max(
+        completedOccurrences.length - matchedAttendances.length,
+        0
+      )
+
+      const onTimeCount = matchedAttendances.filter(({ attendance, occurrence }) => {
+        return attendance.check_in_at <= occurrence.start_at
       }).length
 
       const onTimeRatePercent =
@@ -966,13 +1151,8 @@ const dashboardController = {
           ? 0
           : Number(((onTimeCount / classesTaught) * 100).toFixed(0))
 
-      const totalHours = schedules.reduce((sum, item) => {
-        const start = item.time_slot?.start_time || '00:00'
-        const end = item.time_slot?.end_time || '00:00'
-        const [sh, sm] = start.split(':').map(Number)
-        const [eh, em] = end.split(':').map(Number)
-        const minutes = eh * 60 + em - (sh * 60 + sm)
-        return sum + Math.max(minutes, 0) / 60
+      const totalHours = matchedAttendances.reduce((sum, { occurrence }) => {
+        return sum + occurrence.duration_hours
       }, 0)
 
       return success(res, 'success', {
