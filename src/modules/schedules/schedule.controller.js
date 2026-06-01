@@ -499,6 +499,60 @@ const groupSchedules = (schedules = []) => {
     .map(({ time_slots, sort_start_minutes, ...group }) => group)
 }
 
+const buildScheduleGroupWhere = (schedule, options = {}) => {
+  const { includeStatus = false } = options
+
+  if (!schedule) {
+    return null
+  }
+
+  const where = {
+    study_program_id: schedule.study_program_id,
+    class_id: schedule.class_id,
+    room_id: schedule.room_id,
+    lecturer_id: schedule.lecturer_id,
+    course_id: schedule.course_id,
+    day: schedule.day
+  }
+
+  if (includeStatus) {
+    where.status = schedule.status
+  }
+
+  return where
+}
+
+const findScheduleGroup = async (db, schedule, options = {}) => {
+  const { include, select, orderBy, includeStatus = false } = options
+  const where = buildScheduleGroupWhere(schedule, { includeStatus })
+
+  if (!where) {
+    return []
+  }
+
+  return db.schedule.findMany({
+    where,
+    ...(include ? { include } : {}),
+    ...(select ? { select } : {}),
+    ...(orderBy ? { orderBy } : {})
+  })
+}
+
+const areTimeSlotSetsEqual = (currentTimeSlotIds = [], targetTimeSlotIds = []) => {
+  if (currentTimeSlotIds.length !== targetTimeSlotIds.length) {
+    return false
+  }
+
+  const currentSorted = [...new Set(currentTimeSlotIds)].sort()
+  const targetSorted = [...new Set(targetTimeSlotIds)].sort()
+
+  if (currentSorted.length !== targetSorted.length) {
+    return false
+  }
+
+  return currentSorted.every((timeSlotId, index) => timeSlotId === targetSorted[index])
+}
+
 const findScheduleConflict = async ({
   db = prisma,
   id,
@@ -1310,15 +1364,7 @@ const scheduleController = {
         return error(res, 'Schedule not found', 404)
       }
 
-      const schedules = await prisma.schedule.findMany({
-        where: {
-          study_program_id: schedule.study_program_id,
-          class_id: schedule.class_id,
-          room_id: schedule.room_id,
-          lecturer_id: schedule.lecturer_id,
-          course_id: schedule.course_id,
-          status: schedule.status
-        },
+      const schedules = await findScheduleGroup(prisma, schedule, {
         include: scheduleInclude,
         orderBy: [{ time_slot: { start_time: 'asc' } }, { created_at: 'asc' }]
       })
@@ -1351,25 +1397,18 @@ const scheduleController = {
         return error(res, 'Schedule not found', 404)
       }
 
-      const scheduleGroup = await prisma.schedule.findMany({
-        where: {
-          study_program_id: existingSchedule.study_program_id,
-          class_id: existingSchedule.class_id,
-          room_id: existingSchedule.room_id,
-          lecturer_id: existingSchedule.lecturer_id,
-          course_id: existingSchedule.course_id,
-          day: existingSchedule.day
-        },
+      const scheduleGroup = await findScheduleGroup(prisma, existingSchedule, {
         select: {
           id: true,
           time_slot_id: true
         }
       })
       const scheduleGroupIds = scheduleGroup.map((item) => item.id)
+      const currentTimeSlotIds = [...new Set(scheduleGroup.map((item) => item.time_slot_id))]
       const targetTimeSlotIds =
         time_slot_id !== undefined
           ? normalizeTimeSlotIds(time_slot_id)
-          : [...new Set(scheduleGroup.map((item) => item.time_slot_id))]
+          : currentTimeSlotIds
 
       const targetData = {
         study_program_id: study_program_id || existingSchedule.study_program_id,
@@ -1434,7 +1473,31 @@ const scheduleController = {
         return error(res, 'No valid fields provided for update', 400)
       }
 
+      const isTimeSlotChanged = !areTimeSlotSetsEqual(
+        currentTimeSlotIds,
+        targetTimeSlotIds
+      )
+
       await prisma.$transaction(async (tx) => {
+        if (!isTimeSlotChanged) {
+          await tx.schedule.updateMany({
+            where: {
+              id: { in: scheduleGroupIds }
+            },
+            data: {
+              study_program_id: targetData.study_program_id,
+              class_id: targetData.class_id,
+              room_id: targetData.room_id,
+              lecturer_id: targetData.lecturer_id,
+              course_id: targetData.course_id,
+              day: targetData.day,
+              status: targetData.status
+            }
+          })
+
+          return
+        }
+
         await tx.schedule.deleteMany({
           where: {
             id: { in: scheduleGroupIds }
@@ -1472,8 +1535,14 @@ const scheduleController = {
         return error(res, 'Schedule not found', 404)
       }
 
-      await prisma.schedule.delete({
-        where: { id }
+      const scheduleGroup = await findScheduleGroup(prisma, existingSchedule, {
+        select: { id: true }
+      })
+
+      await prisma.schedule.deleteMany({
+        where: {
+          id: { in: scheduleGroup.map((item) => item.id) }
+        }
       })
 
       return success(res, 'success', null)
@@ -1497,8 +1566,14 @@ const scheduleController = {
         return error(res, 'Schedule not found', 404)
       }
 
-      await prisma.schedule.update({
-        where: { id },
+      const scheduleGroup = await findScheduleGroup(prisma, existingSchedule, {
+        select: { id: true }
+      })
+
+      await prisma.schedule.updateMany({
+        where: {
+          id: { in: scheduleGroup.map((item) => item.id) }
+        },
         data: {
           status: !existingSchedule.status
         }
