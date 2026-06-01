@@ -91,6 +91,42 @@ const getMinutesFromTime = (time = '00:00') => {
   return (hour || 0) * 60 + (minute || 0)
 }
 
+const groupTeachingScheduleItems = (items = []) => {
+  const grouped = []
+
+  items.forEach((item) => {
+    const previousItem = grouped[grouped.length - 1]
+
+    const hasSameIdentity =
+      previousItem &&
+      previousItem.class_name === item.class_name &&
+      previousItem.class_code === item.class_code &&
+      previousItem.lecturer_name === item.lecturer_name &&
+      previousItem.room_id === item.room_id &&
+      previousItem.room_name === item.room_name &&
+      previousItem.building_id === item.building_id &&
+      previousItem.building_name === item.building_name &&
+      previousItem.status === item.status
+
+    const isContiguous =
+      hasSameIdentity && previousItem.end_time === item.start_time
+
+    if (isContiguous) {
+      previousItem.end_time = item.end_time
+      return
+    }
+
+    grouped.push({ ...item })
+  })
+
+  return grouped.sort(
+    (a, b) => getMinutesFromTime(a.start_time) - getMinutesFromTime(b.start_time)
+  )
+}
+
+const getUniqueLecturerIds = (items = []) =>
+  [...new Set(items.map((item) => item.lecturer_id).filter(Boolean))]
+
 const getScheduleDurationHours = (schedule) => {
   const start = getMinutesFromTime(schedule.time_slot?.start_time)
   const end = getMinutesFromTime(schedule.time_slot?.end_time)
@@ -666,6 +702,9 @@ const dashboardController = {
   getWeeklyAttendanceOverview: async (_req, res) => {
     try {
       const nowParts = getJakartaParts()
+      const currentTime = `${nowParts.hour.toString().padStart(2, '0')}:${nowParts.minute
+        .toString()
+        .padStart(2, '0')}`
       const todayUtc = toUtcFromJakarta(
         nowParts.year,
         nowParts.month,
@@ -687,12 +726,22 @@ const dashboardController = {
         const m = currentDateUtc.getUTCMonth() + 1
         const d = currentDateUtc.getUTCDate()
         const { start, end } = getJakartaDayRange(y, m, d)
+        const isToday = y === nowParts.year && m === nowParts.month && d === nowParts.day
+        const isFuture =
+          currentDateUtc.getTime() >
+          toUtcFromJakarta(nowParts.year, nowParts.month, nowParts.day, 0, 0, 0).getTime()
 
         const [scheduledLecturers, attendedLecturers] = await Promise.all([
           prisma.schedule.findMany({
             where: { day: dayValue, status: true },
-            distinct: ['lecturer_id'],
-            select: { lecturer_id: true }
+            select: {
+              lecturer_id: true,
+              time_slot: {
+                select: {
+                  end_time: true
+                }
+              }
+            }
           }),
           prisma.attendance.findMany({
             where: {
@@ -706,15 +755,29 @@ const dashboardController = {
           })
         ])
 
-        const present = attendedLecturers.length
-        const expected = scheduledLecturers.length
-        const absent = Math.max(expected - present, 0)
+        const eligibleSchedules = isToday
+          ? scheduledLecturers.filter(
+              (schedule) =>
+                getMinutesFromTime(schedule.time_slot?.end_time || '00:00') <=
+                getMinutesFromTime(currentTime)
+            )
+          : scheduledLecturers
+
+        const expectedLecturerIds = getUniqueLecturerIds(eligibleSchedules)
+        const attendedLecturerIds = new Set(getUniqueLecturerIds(attendedLecturers))
+        const present = expectedLecturerIds.filter((lecturerId) =>
+          attendedLecturerIds.has(lecturerId)
+        ).length
+        const expected = expectedLecturerIds.length
+        const absent = isFuture ? null : Math.max(expected - present, 0)
+        const status = isFuture ? 'upcoming' : isToday ? 'ongoing' : 'completed'
 
         weeklyData.push({
           day: dayValue,
           label: DAY_LABELS[dayValue],
           present,
-          absent
+          absent,
+          status
         })
       }
 
@@ -1109,7 +1172,7 @@ const dashboardController = {
         }
       })
 
-      return success(res, 'success', items)
+      return success(res, 'success', groupTeachingScheduleItems(items))
     } catch (err) {
       return error(res, err.message, 500)
     }
