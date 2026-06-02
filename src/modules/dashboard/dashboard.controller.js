@@ -120,12 +120,14 @@ const groupTeachingScheduleItems = (items = []) => {
   })
 
   return grouped.sort(
-    (a, b) => getMinutesFromTime(a.start_time) - getMinutesFromTime(b.start_time)
+    (a, b) =>
+      getMinutesFromTime(a.start_time) - getMinutesFromTime(b.start_time)
   )
 }
 
-const getUniqueLecturerIds = (items = []) =>
-  [...new Set(items.map((item) => item.lecturer_id).filter(Boolean))]
+const getUniqueLecturerIds = (items = []) => [
+  ...new Set(items.map((item) => item.lecturer_id).filter(Boolean))
+]
 
 const getScheduleDurationHours = (schedule) => {
   const start = getMinutesFromTime(schedule.time_slot?.start_time)
@@ -158,7 +160,9 @@ const enumerateScheduleOccurrences = (schedule, startDate, endDate) => {
 
     const weekday = new Date(cursorStart).getUTCDay()
     if (weekday === targetWeekday) {
-      const [startHour, startMinute] = (schedule.time_slot?.start_time || '00:00')
+      const [startHour, startMinute] = (
+        schedule.time_slot?.start_time || '00:00'
+      )
         .split(':')
         .map(Number)
       const [endHour, endMinute] = (schedule.time_slot?.end_time || '00:00')
@@ -197,7 +201,11 @@ const enumerateScheduleOccurrences = (schedule, startDate, endDate) => {
   return occurrences
 }
 
-const findAttendanceOccurrenceIndex = (occurrences, attendance, usedIndexes) => {
+const findAttendanceOccurrenceIndex = (
+  occurrences,
+  attendance,
+  usedIndexes
+) => {
   const attendanceParts = getJakartaParts(attendance.check_in_at)
   const attendanceDateKey = `${attendanceParts.year}-${attendanceParts.month}-${attendanceParts.day}`
 
@@ -211,7 +219,8 @@ const findAttendanceOccurrenceIndex = (occurrences, attendance, usedIndexes) => 
     .filter(({ occurrence, index }) => {
       if (usedIndexes.has(index)) return false
       if (buildDateKey(occurrence.start_at) !== attendanceDateKey) return false
-      if (attendance.room_id && occurrence.room_id !== attendance.room_id) return false
+      if (attendance.room_id && occurrence.room_id !== attendance.room_id)
+        return false
       return attendance.check_in_at <= occurrence.end_at
     })
     .sort((a, b) => a.occurrence.start_at - b.occurrence.start_at)
@@ -225,7 +234,8 @@ const findAttendanceOccurrenceIndex = (occurrences, attendance, usedIndexes) => 
       .map((occurrence, index) => ({ occurrence, index }))
       .filter(({ occurrence, index }) => {
         if (usedIndexes.has(index)) return false
-        if (buildDateKey(occurrence.start_at) !== attendanceDateKey) return false
+        if (buildDateKey(occurrence.start_at) !== attendanceDateKey)
+          return false
         return attendance.check_in_at <= occurrence.end_at
       })
       .sort((a, b) => a.occurrence.start_at - b.occurrence.start_at)
@@ -461,40 +471,60 @@ const buildEnergyMonitoringSummary = async (buildingId) => {
     }
   })
 
-  const [recentLogs, latestLogsPerDevice] = await Promise.all([
-    prisma.sensorLog.findMany({
-      where: {
-        room_id: { in: roomIds },
-        created_at: {
-          gte: windowStart
+  const [recentLogs, latestLogsPerDevice, baselineLogsPerDevice] =
+    await Promise.all([
+      prisma.sensorLog.findMany({
+        where: {
+          room_id: { in: roomIds },
+          created_at: {
+            gte: windowStart
+          },
+          power: { not: null }
         },
-        power: { not: null }
-      },
-      select: {
-        room_id: true,
-        power: true,
-        created_at: true
-      },
-      orderBy: { created_at: 'asc' }
-    }),
-    Promise.all(
-      powerDevices.map((device) =>
-        prisma.sensorLog.findFirst({
-          where: {
-            device_id: device.id,
-            power: { not: null }
-          },
-          select: {
-            device_id: true,
-            room_id: true,
-            power: true,
-            created_at: true
-          },
-          orderBy: { created_at: 'desc' }
-        })
+        select: {
+          device_id: true,
+          room_id: true,
+          power: true,
+          created_at: true
+        },
+        orderBy: { created_at: 'asc' }
+      }),
+      Promise.all(
+        powerDevices.map((device) =>
+          prisma.sensorLog.findFirst({
+            where: {
+              device_id: device.id,
+              power: { not: null }
+            },
+            select: {
+              device_id: true,
+              room_id: true,
+              power: true,
+              created_at: true
+            },
+            orderBy: { created_at: 'desc' }
+          })
+        )
+      ),
+      Promise.all(
+        powerDevices.map((device) =>
+          prisma.sensorLog.findFirst({
+            where: {
+              device_id: device.id,
+              power: { not: null },
+              created_at: { lt: windowStart }
+            },
+            select: {
+              device_id: true,
+              room_id: true,
+              power: true,
+              created_at: true
+            },
+            orderBy: { created_at: 'desc' }
+          })
+        )
       )
-    )
-  ])
+    ])
 
   const bucketMap = new Map()
 
@@ -507,15 +537,40 @@ const buildEnergyMonitoringSummary = async (buildingId) => {
     })
   }
 
+  const bucketLogsMap = new Map()
+
   recentLogs.forEach((log) => {
     const bucketKey = Math.floor(
       new Date(log.created_at).getTime() / (bucketSeconds * 1000)
     )
 
     if (bucketMap.has(bucketKey)) {
-      const current = bucketMap.get(bucketKey)
-      current.total_power += Number(log.power || 0)
+      const bucketLogs = bucketLogsMap.get(bucketKey) || []
+      bucketLogs.push(log)
+      bucketLogsMap.set(bucketKey, bucketLogs)
     }
+  })
+
+  const runningPowerByDevice = new Map()
+  let runningTotalPower = 0
+
+  baselineLogsPerDevice.filter(Boolean).forEach((log) => {
+    const power = Number(log.power || 0)
+    runningPowerByDevice.set(log.device_id, power)
+    runningTotalPower += power
+  })
+
+  bucketMap.forEach((bucket, bucketKey) => {
+    const bucketLogs = bucketLogsMap.get(bucketKey) || []
+
+    bucketLogs.forEach((log) => {
+      const previousPower = Number(runningPowerByDevice.get(log.device_id) || 0)
+      const nextPower = Number(log.power || 0)
+      runningPowerByDevice.set(log.device_id, nextPower)
+      runningTotalPower += nextPower - previousPower
+    })
+
+    bucket.total_power = runningTotalPower
   })
 
   const trend = [...bucketMap.values()].map((item) => ({
@@ -726,10 +781,18 @@ const dashboardController = {
         const m = currentDateUtc.getUTCMonth() + 1
         const d = currentDateUtc.getUTCDate()
         const { start, end } = getJakartaDayRange(y, m, d)
-        const isToday = y === nowParts.year && m === nowParts.month && d === nowParts.day
+        const isToday =
+          y === nowParts.year && m === nowParts.month && d === nowParts.day
         const isFuture =
           currentDateUtc.getTime() >
-          toUtcFromJakarta(nowParts.year, nowParts.month, nowParts.day, 0, 0, 0).getTime()
+          toUtcFromJakarta(
+            nowParts.year,
+            nowParts.month,
+            nowParts.day,
+            0,
+            0,
+            0
+          ).getTime()
 
         const [scheduledLecturers, attendedLecturers] = await Promise.all([
           prisma.schedule.findMany({
@@ -764,7 +827,9 @@ const dashboardController = {
           : scheduledLecturers
 
         const expectedLecturerIds = getUniqueLecturerIds(eligibleSchedules)
-        const attendedLecturerIds = new Set(getUniqueLecturerIds(attendedLecturers))
+        const attendedLecturerIds = new Set(
+          getUniqueLecturerIds(attendedLecturers)
+        )
         const present = expectedLecturerIds.filter((lecturerId) =>
           attendedLecturerIds.has(lecturerId)
         ).length
@@ -1150,7 +1215,9 @@ const dashboardController = {
         if (attendance) {
           const attendedParts = getJakartaParts(attendance.check_in_at)
           const checkInMinutes = attendedParts.hour * 60 + attendedParts.minute
-          const [startHour, startMinute] = (item.time_slot?.start_time || '00:00')
+          const [startHour, startMinute] = (
+            item.time_slot?.start_time || '00:00'
+          )
             .split(':')
             .map(Number)
           const startMinutes = startHour * 60 + startMinute
@@ -1258,9 +1325,11 @@ const dashboardController = {
         0
       )
 
-      const onTimeCount = matchedAttendances.filter(({ attendance, occurrence }) => {
-        return attendance.check_in_at <= occurrence.start_at
-      }).length
+      const onTimeCount = matchedAttendances.filter(
+        ({ attendance, occurrence }) => {
+          return attendance.check_in_at <= occurrence.start_at
+        }
+      ).length
 
       const onTimeRatePercent =
         classesTaught === 0
