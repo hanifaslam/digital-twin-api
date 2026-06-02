@@ -4,6 +4,23 @@ const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
 const { publish, getMQTTClient } = require('../../config/mqtt')
 
+const mapLatestTelemetry = (log) => {
+  if (!log) return null
+
+  return {
+    sensor_type: log.sensor_type,
+    voltage: log.voltage,
+    current: log.current,
+    power: log.power,
+    energy: log.energy,
+    frequency: log.frequency,
+    power_factor: log.power_factor,
+    temperature: log.temperature,
+    humidity: log.humidity,
+    created_at: log.created_at
+  }
+}
+
 const deviceController = {
   create: async (req, res) => {
     try {
@@ -39,13 +56,22 @@ const deviceController = {
 
   getAll: async (req, res) => {
     try {
-      const { q, type, room_id, building_id, status } = req.query || {}
+      const { q, type, room_id, building_id, status, exclude_type } =
+        req.query || {}
       const statuses = [
         ...new Set(
           status
             ?.split(',')
             .map((item) => item.trim().toLowerCase())
             .filter((item) => item === 'true' || item === 'false')
+        )
+      ]
+      const excludedTypes = [
+        ...new Set(
+          exclude_type
+            ?.split(',')
+            .map((item) => item.trim().toUpperCase())
+            .filter(Boolean)
         )
       ]
       const page = parseInt(req.query.page) || 1
@@ -60,6 +86,12 @@ const deviceController = {
 
       if (type) {
         where.type = type
+      }
+
+      if (excludedTypes.length > 0) {
+        where.type = {
+          notIn: excludedTypes
+        }
       }
 
       if (room_id) {
@@ -94,6 +126,24 @@ const deviceController = {
             is_online: true,
             last_seen_at: true,
             last_latency_ms: true,
+            sensor_logs: {
+              select: {
+                sensor_type: true,
+                voltage: true,
+                current: true,
+                power: true,
+                energy: true,
+                frequency: true,
+                power_factor: true,
+                temperature: true,
+                humidity: true,
+                created_at: true
+              },
+              orderBy: {
+                created_at: 'desc'
+              },
+              take: 1
+            },
             created_at: true,
             updated_at: true
           },
@@ -120,6 +170,7 @@ const deviceController = {
         is_online: device.is_online,
         last_seen_at: device.last_seen_at,
         last_latency_ms: device.last_latency_ms,
+        latest_telemetry: mapLatestTelemetry(device.sensor_logs?.[0]),
         is_mqtt_connected: isMqttConnected,
         created_at: device.created_at,
         updated_at: device.updated_at
@@ -138,11 +189,42 @@ const deviceController = {
       const { id } = req.params
       const device = await prisma.device.findUnique({
         where: { id },
-        include: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          room_id: true,
+          mqtt_topic: true,
+          stream_url: true,
+          status: true,
+          is_on: true,
+          is_online: true,
+          last_seen_at: true,
+          last_latency_ms: true,
+          created_at: true,
+          updated_at: true,
           room: {
             select: {
               name: true
             }
+          },
+          sensor_logs: {
+            select: {
+              sensor_type: true,
+              voltage: true,
+              current: true,
+              power: true,
+              energy: true,
+              frequency: true,
+              power_factor: true,
+              temperature: true,
+              humidity: true,
+              created_at: true
+            },
+            orderBy: {
+              created_at: 'desc'
+            },
+            take: 1
           }
         }
       })
@@ -159,8 +241,10 @@ const deviceController = {
         stream_url: device.stream_url,
         status: device.status,
         is_on: device.is_on,
+        is_online: device.is_online,
         last_seen_at: device.last_seen_at,
         last_latency_ms: device.last_latency_ms,
+        latest_telemetry: mapLatestTelemetry(device.sensor_logs?.[0]),
         created_at: device.created_at,
         updated_at: device.updated_at
       }
@@ -240,7 +324,10 @@ const deviceController = {
 
       // Publish to MQTT if status was updated and topic exists
       if (status !== undefined && updatedDevice.mqtt_topic) {
-        publish(updatedDevice.mqtt_topic, updatedDevice.status ? 'true' : 'false')
+        publish(
+          updatedDevice.mqtt_topic,
+          updatedDevice.status ? 'true' : 'false'
+        )
       }
 
       return success(res, 'success', result)
