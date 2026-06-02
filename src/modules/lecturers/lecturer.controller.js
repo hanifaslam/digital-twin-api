@@ -913,7 +913,9 @@ const lecturerController = {
         include: {
           user: {
             select: {
-              name: true
+              id: true,
+              name: true,
+              profile_picture: true
             }
           },
           study_programs: {
@@ -987,6 +989,7 @@ const lecturerController = {
           name: lecturer.user?.name,
           nip: lecturer.nip,
           phone_number: lecturer.phone_number,
+          profile_picture: lecturer.user?.profile_picture || null,
           status: lecturer.status, // AVAILABLE, BUSY, OFFLINE
           room_type: roomType,
           course: courseName,
