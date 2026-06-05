@@ -394,23 +394,33 @@ const buildGroupedTimeLabel = (timeSlots = []) => {
     return null
   }
 
-  const ranges = timeSlots.map(
-    (slot) => `${slot.start_time || '-'}-${slot.end_time || '-'}`
-  )
-
-  const isContiguous = timeSlots.every((slot, index) => {
-    if (index === 0) {
-      return true
-    }
-
-    return timeSlots[index - 1].end_time === slot.start_time
-  })
-
-  if (isContiguous) {
-    return `${timeSlots[0].start_time}-${timeSlots[timeSlots.length - 1].end_time}`
+  const mergedRanges = []
+  let currentRange = {
+    start_time: timeSlots[0].start_time || '-',
+    end_time: timeSlots[0].end_time || '-'
   }
 
-  return ranges.join(', ')
+  timeSlots.slice(1).forEach((slot) => {
+    if (currentRange.end_time === (slot.start_time || '-')) {
+      currentRange.end_time = slot.end_time || currentRange.end_time
+      return
+    }
+
+    mergedRanges.push(
+      `${currentRange.start_time || '-'}-${currentRange.end_time || '-'}`
+    )
+
+    currentRange = {
+      start_time: slot.start_time || '-',
+      end_time: slot.end_time || '-'
+    }
+  })
+
+  mergedRanges.push(
+    `${currentRange.start_time || '-'}-${currentRange.end_time || '-'}`
+  )
+
+  return mergedRanges.join(', ')
 }
 
 const DAY_ORDER = Object.values(Day)

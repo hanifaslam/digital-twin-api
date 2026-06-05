@@ -115,6 +115,37 @@ const withDeactivationFlag = (room) => {
   }
 }
 
+const mergeContiguousRoomSchedules = (items = [], currentTime = '00:00') => {
+  const grouped = []
+
+  items.forEach((item) => {
+    const previousItem = grouped[grouped.length - 1]
+
+    const hasSameIdentity =
+      previousItem &&
+      previousItem.course_name === item.course_name &&
+      previousItem.course_code === item.course_code &&
+      previousItem.class_id === item.class_id &&
+      previousItem.class_name === item.class_name &&
+      previousItem.lecturer_name === item.lecturer_name
+
+    const isContiguous =
+      hasSameIdentity && previousItem.end_time === item.start_time
+
+    if (isContiguous) {
+      previousItem.end_time = item.end_time
+      previousItem.is_online =
+        currentTime >= previousItem.start_time &&
+        currentTime <= previousItem.end_time
+      return
+    }
+
+    grouped.push({ ...item })
+  })
+
+  return grouped
+}
+
 const roomController = {
   downloadTemplate: async (req, res) => {
     try {
@@ -798,7 +829,12 @@ const roomController = {
         lecturer_name: s.lecturer.user?.name || 'N/A'
       }))
 
-      return success(res, 'success', formattedSchedules)
+      const mergedSchedules = mergeContiguousRoomSchedules(
+        formattedSchedules,
+        currentTime
+      )
+
+      return success(res, 'success', mergedSchedules)
     } catch (err) {
       return error(res, err.message, 500)
     }
