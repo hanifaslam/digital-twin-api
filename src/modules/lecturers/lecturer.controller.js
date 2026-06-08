@@ -784,7 +784,7 @@ const lecturerController = {
         data: {
           status: status,
           is_manual: true,
-          overridden_at: new Date()
+          overridden_at: status === 'AVAILABLE' ? null : new Date()
         }
       })
 
