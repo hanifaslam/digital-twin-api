@@ -78,6 +78,17 @@ const getJakartaMonthRange = (year, month) => {
   return { start, end }
 }
 
+const getCurrentAcademicPeriod = async (date = new Date()) => {
+  return prisma.academicPeriod.findFirst({
+    where: {
+      status: true,
+      start_date: { lte: date },
+      end_date: { gte: date }
+    },
+    orderBy: [{ start_date: 'desc' }, { created_at: 'desc' }]
+  })
+}
+
 const DAY_TO_WEEKDAY = {
   [Day.MONDAY]: 1,
   [Day.TUESDAY]: 2,
@@ -1259,7 +1270,17 @@ const dashboardController = {
       }
 
       const now = getJakartaParts()
-      const startOfSemester = toUtcFromJakarta(now.year, 1, 1, 0, 0, 0)
+      const currentAcademicPeriod = await getCurrentAcademicPeriod(new Date())
+
+      if (!currentAcademicPeriod) {
+        return error(
+          res,
+          'Academic period for the current date is not configured',
+          400
+        )
+      }
+
+      const startOfSemester = currentAcademicPeriod.start_date
       const endOfToday = toUtcFromJakarta(
         now.year,
         now.month,

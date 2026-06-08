@@ -24,6 +24,7 @@ const sensorRoutes = require('../modules/sensors/sensor.routes')
 const dashboardRoutes = require('../modules/dashboard/dashboard.routes')
 const dashboardController = require('../modules/dashboard/dashboard.controller')
 const chatbotRoutes = require('../modules/chatbot/chatbot.routes')
+const academicPeriodRoutes = require('../modules/academic-periods/academic-period.routes')
 
 router.use('/auth', authRoutes)
 router.get('/dashboard/buildings', buildingController.getAllBuildings)
@@ -57,6 +58,7 @@ router.use('/classes', authMiddleware, masterClassRoutes)
 router.use('/schedules', authMiddleware, scheduleRoutes)
 router.use('/face-recognition', authMiddleware, faceRecognitionRoutes)
 router.use('/sensors', sensorRoutes)
+router.use('/academic-periods', authMiddleware, academicPeriodRoutes)
 router.use('/dashboard', authMiddleware, dashboardRoutes)
 
 module.exports = router

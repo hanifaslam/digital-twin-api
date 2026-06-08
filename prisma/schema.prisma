@@ -260,6 +260,20 @@ model Attendance {
   @@index([room_id])
 }
 
+model AcademicPeriod {
+  id         String             @id @default(cuid())
+  name       String
+  type       AcademicPeriodType
+  start_date DateTime
+  end_date   DateTime
+  status     Boolean            @default(true)
+  created_at DateTime           @default(now())
+  updated_at DateTime           @updatedAt
+
+  @@index([status])
+  @@index([start_date, end_date])
+}
+
 model DeviceStatus {
   id         String   @id @default(cuid())
   room_id    String   @unique
@@ -344,6 +358,11 @@ enum CourseSemester {
   SEMESTER_6
   SEMESTER_7
   SEMESTER_8
+}
+
+enum AcademicPeriodType {
+  GANJIL
+  GENAP
 }
 
 model FaceData {

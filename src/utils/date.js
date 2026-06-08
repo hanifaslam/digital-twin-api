@@ -91,5 +91,6 @@ module.exports = {
   getJakartaDayRange,
   getJakartaDateParts,
   getJakartaScheduleContext,
-  getJakartaTime
+  getJakartaTime,
+  toUtcFromJakarta
 }

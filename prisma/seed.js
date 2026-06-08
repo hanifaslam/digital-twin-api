@@ -14,6 +14,7 @@ async function main() {
   await prisma.sensorLog.deleteMany({})
   await prisma.deviceStatus.deleteMany({})
   await prisma.device.deleteMany({})
+  await prisma.academicPeriod.deleteMany({})
   await prisma.attendance.deleteMany({})
   await prisma.schedule.deleteMany({})
   await prisma.helperBuilding.deleteMany({})
@@ -100,6 +101,50 @@ async function main() {
   }
 
   const hashedPassword = await bcrypt.hash('Password123!', 10)
+
+  const toUtcFromJakarta = (
+    year,
+    month,
+    day,
+    hour = 0,
+    minute = 0,
+    second = 0
+  ) => new Date(Date.UTC(year, month - 1, day, hour - 7, minute, second))
+
+  const currentYear = new Date().getUTCFullYear()
+  const getEndOfFebruaryUtc = (year) =>
+    toUtcFromJakarta(year, 3, 0, 23, 59, 59)
+
+  const academicPeriodsData = [
+    {
+      name: `Semester Ganjil ${currentYear - 1}/${currentYear}`,
+      type: 'GANJIL',
+      start_date: toUtcFromJakarta(currentYear - 1, 8, 1, 0, 0, 0),
+      end_date: getEndOfFebruaryUtc(currentYear)
+    },
+    {
+      name: `Semester Genap ${currentYear}`,
+      type: 'GENAP',
+      start_date: toUtcFromJakarta(currentYear, 3, 1, 0, 0, 0),
+      end_date: toUtcFromJakarta(currentYear, 7, 31, 23, 59, 59)
+    },
+    {
+      name: `Semester Ganjil ${currentYear}/${currentYear + 1}`,
+      type: 'GANJIL',
+      start_date: toUtcFromJakarta(currentYear, 8, 1, 0, 0, 0),
+      end_date: getEndOfFebruaryUtc(currentYear + 1)
+    },
+    {
+      name: `Semester Genap ${currentYear + 1}`,
+      type: 'GENAP',
+      start_date: toUtcFromJakarta(currentYear + 1, 3, 1, 0, 0, 0),
+      end_date: toUtcFromJakarta(currentYear + 1, 7, 31, 23, 59, 59)
+    }
+  ]
+
+  for (const academicPeriod of academicPeriodsData) {
+    await prisma.academicPeriod.create({ data: academicPeriod })
+  }
 
   // 4. Buildings (5)
   const buildingsData = [
