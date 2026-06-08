@@ -1,7 +1,18 @@
 const { error, success } = require('../../config/response')
 const { chatDashboard } = require('./chatbot.service')
+const { chatbotSuggestions } = require('./chatbot.examples')
 
 const chatbotController = {
+  getSuggestions: async (_req, res) => {
+    try {
+      return success(res, 'success', {
+        suggestions: chatbotSuggestions
+      })
+    } catch (err) {
+      return error(res, err.message, err.statusCode || 500)
+    }
+  },
+
   chatDashboard: async (req, res) => {
     try {
       const result = await chatDashboard(req.body)

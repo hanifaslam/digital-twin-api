@@ -49,6 +49,10 @@ const DOMAIN_KEYWORDS = [
   'jadwal',
   'schedule',
   'dosen',
+  'pak',
+  'bapak',
+  'bu',
+  'ibu',
   'lecturer',
   'mengajar',
   'available',
@@ -66,16 +70,30 @@ const DOMAIN_KEYWORDS = [
 ]
 
 const FOLLOW_UP_KEYWORDS = [
+  'kalo',
+  'kalau',
   'itu',
   'tadi',
   'yang tadi',
+  'yang ini',
+  'yang itu',
   'kenapa',
   'bagaimana',
   'gimana',
   'lanjut',
   'jelasin',
   'detailnya',
-  'sekarang'
+  'sekarang',
+  'kalau yang',
+  'kalo yang',
+  'kalau bu',
+  'kalo bu',
+  'kalau ibu',
+  'kalo ibu',
+  'kalau pak',
+  'kalo pak',
+  'kalau bapak',
+  'kalo bapak'
 ]
 
 let langChainCache = null

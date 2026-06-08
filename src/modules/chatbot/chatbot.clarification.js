@@ -55,10 +55,21 @@ const resolveClarificationChoice = ({ clarification, message }) => {
       const fields = [item.id, item.name, item.building_name, item.nip]
         .filter(Boolean)
         .map(normalizeText)
-      const score = fields.reduce(
-        (sum, field) => sum + (normalizedMessage.includes(field) ? 1 : 0),
-        0
+      const tokens = fields.flatMap((field) =>
+        field
+          .split(/\s+/)
+          .map((token) => token.trim())
+          .filter((token) => token.length >= 3)
       )
+      const score =
+        fields.reduce(
+          (sum, field) => sum + (normalizedMessage.includes(field) ? 3 : 0),
+          0
+        ) +
+        tokens.reduce(
+          (sum, token) => sum + (normalizedMessage.includes(token) ? 1 : 0),
+          0
+        )
 
       return { item, score }
     })

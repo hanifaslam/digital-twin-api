@@ -5,6 +5,7 @@ const { chatDashboardSchema } = require('./chatbot.schema')
 
 const router = express.Router()
 
+router.get('/suggestions', chatbotController.getSuggestions)
 router.post('/', validate(chatDashboardSchema), chatbotController.chatDashboard)
 
 module.exports = router
