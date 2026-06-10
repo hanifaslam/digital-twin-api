@@ -137,6 +137,8 @@ const mergeContiguousRoomSchedules = (items = [], currentTime = '00:00') => {
       previousItem.is_online =
         currentTime >= previousItem.start_time &&
         currentTime <= previousItem.end_time
+      previousItem.is_passed = currentTime > previousItem.end_time
+      previousItem.is_upcoming = currentTime < previousItem.start_time
       return
     }
 
@@ -826,6 +828,8 @@ const roomController = {
         is_online:
           currentTime >= s.time_slot.start_time &&
           currentTime <= s.time_slot.end_time,
+        is_passed: currentTime > s.time_slot.end_time,
+        is_upcoming: currentTime < s.time_slot.start_time,
         lecturer_name: s.lecturer.user?.name || 'N/A'
       }))
 
