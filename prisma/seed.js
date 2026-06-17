@@ -12,7 +12,6 @@ async function main() {
   console.log('--- Cleaning database ---')
   // Order matters for deletion due to foreign key constraints
   await prisma.sensorLog.deleteMany({})
-  await prisma.deviceStatus.deleteMany({})
   await prisma.device.deleteMany({})
   await prisma.academicPeriod.deleteMany({})
   await prisma.attendance.deleteMany({})
@@ -325,12 +324,6 @@ async function main() {
     })
   }
 
-  // 13. Device Status (5)
-  // for (let i = 0; i < 5; i++) {
-  //   await prisma.deviceStatus.create({
-  //     data: { room_id: rooms[i].id, light: true, ac: false }
-  //   })
-  // }
 
   // 14. Sensor Logs (5)
   // for (let i = 0; i < 5; i++) {

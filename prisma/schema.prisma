@@ -38,7 +38,7 @@ model Role {
 
 model Permission {
   id         String           @id @default(cuid())
-  name       String           @unique // Contoh: USER_CREATE, DEVICE_CONTROL
+  name       String           @unique
   sequence   Int?             @default(0)
   module_id  String
   module     Module           @relation(fields: [module_id], references: [id])
@@ -66,22 +66,21 @@ model RolePermission {
 }
 
 model Room {
-  id            String         @id @default(cuid())
-  name          String
-  building_id   String
-  building      Building       @relation(fields: [building_id], references: [id])
-  floor_id      String
-  floor         Floor          @relation(fields: [floor_id], references: [id])
-  status        Boolean        @default(true)
-  schedules     Schedule[]
-  device_status DeviceStatus?
-  sensor_logs   SensorLog[]
-  daily_summaries DailySensorSummary[]
-  devices       Device[]
-  attendances   Attendance[]
-  home_study_programs StudyProgram[] @relation("StudyProgramHomeRoom")
-  created_at    DateTime       @default(now())
-  updated_at    DateTime       @updatedAt
+  id                  String               @id @default(cuid())
+  name                String
+  building_id         String
+  building            Building             @relation(fields: [building_id], references: [id])
+  floor_id            String
+  floor               Floor                @relation(fields: [floor_id], references: [id])
+  status              Boolean              @default(true)
+  schedules           Schedule[]
+  sensor_logs         SensorLog[]
+  daily_summaries     DailySensorSummary[]
+  devices             Device[]
+  attendances         Attendance[]
+  home_study_programs StudyProgram[]       @relation("StudyProgramHomeRoom")
+  created_at          DateTime             @default(now())
+  updated_at          DateTime             @updatedAt
 
   @@index([building_id])
   @@index([floor_id])
@@ -111,13 +110,13 @@ model Floor {
 }
 
 model TimeSlot {
-  id          String     @id @default(cuid())
-  name        String     @unique
-  start_time  String
-  end_time    String
-  schedules   Schedule[]
-  created_at  DateTime   @default(now())
-  updated_at  DateTime   @updatedAt
+  id         String     @id @default(cuid())
+  name       String     @unique
+  start_time String
+  end_time   String
+  schedules  Schedule[]
+  created_at DateTime   @default(now())
+  updated_at DateTime   @updatedAt
 
   @@unique([start_time, end_time])
   @@index([start_time])
@@ -138,21 +137,21 @@ model Class {
 }
 
 model Lecturer {
-  id               String                @id @default(cuid())
-  nip              String                @unique
+  id               String                 @id @default(cuid())
+  nip              String                 @unique
   phone_number     String?
-  user_id          String                @unique
-  user             User                  @relation(fields: [user_id], references: [id])
+  user_id          String                 @unique
+  user             User                   @relation(fields: [user_id], references: [id])
   study_programs   LecturerStudyProgram[]
   schedules        Schedule[]
   attendances      Attendance[]
-  is_manual        Boolean               @default(false)
+  is_manual        Boolean                @default(false)
   overridden_at    DateTime?
-  status           String                @default("OFFLINE") // AVAILABLE, BUSY, OFFLINE
-  last_auto_status String?               // Cache untuk deteksi transisi jadwal
+  status           String                 @default("OFFLINE")
+  last_auto_status String?
   face_data        FaceData?
-  created_at       DateTime              @default(now())
-  updated_at       DateTime              @updatedAt
+  created_at       DateTime               @default(now())
+  updated_at       DateTime               @updatedAt
 }
 
 model Helper {
@@ -167,31 +166,31 @@ model Helper {
 }
 
 model StudyProgram {
-  id          String                @id @default(cuid())
-  name        String                @unique
-  code        String                @unique
-  status      Boolean               @default(true)
+  id           String                 @id @default(cuid())
+  name         String                 @unique
+  code         String                 @unique
+  status       Boolean                @default(true)
   home_room_id String?
-  home_room    Room?                @relation("StudyProgramHomeRoom", fields: [home_room_id], references: [id])
-  created_at  DateTime              @default(now())
-  updated_at  DateTime              @updatedAt
-  lecturers   LecturerStudyProgram[]
-  courses     Course[]
-  classes     Class[]
-  schedules   Schedule[]
+  home_room    Room?                  @relation("StudyProgramHomeRoom", fields: [home_room_id], references: [id])
+  created_at   DateTime               @default(now())
+  updated_at   DateTime               @updatedAt
+  lecturers    LecturerStudyProgram[]
+  courses      Course[]
+  classes      Class[]
+  schedules    Schedule[]
 }
 
 model Course {
-  id               String       @id @default(cuid())
+  id               String         @id @default(cuid())
   code             String
   name             String
   semester         CourseSemester
   study_program_id String
-  study_program    StudyProgram @relation(fields: [study_program_id], references: [id])
+  study_program    StudyProgram   @relation(fields: [study_program_id], references: [id])
   schedules        Schedule[]
-  status           Boolean      @default(true)
-  created_at       DateTime     @default(now())
-  updated_at       DateTime     @updatedAt
+  status           Boolean        @default(true)
+  created_at       DateTime       @default(now())
+  updated_at       DateTime       @updatedAt
 
   @@unique([study_program_id, code])
   @@unique([study_program_id, name])
@@ -248,12 +247,12 @@ model Schedule {
 }
 
 model Attendance {
-  id           String    @id @default(cuid())
-  lecturer_id  String
-  room_id      String?
-  check_in_at  DateTime  @default(now())
-  lecturer     Lecturer  @relation(fields: [lecturer_id], references: [id])
-  room         Room?     @relation(fields: [room_id], references: [id])
+  id          String   @id @default(cuid())
+  lecturer_id String
+  room_id     String?
+  check_in_at DateTime @default(now())
+  lecturer    Lecturer @relation(fields: [lecturer_id], references: [id])
+  room        Room?    @relation(fields: [room_id], references: [id])
 
   @@index([lecturer_id])
   @@index([check_in_at])
@@ -272,15 +271,6 @@ model AcademicPeriod {
 
   @@index([status])
   @@index([start_date, end_date])
-}
-
-model DeviceStatus {
-  id         String   @id @default(cuid())
-  room_id    String   @unique
-  light      Boolean  @default(false)
-  ac         Boolean  @default(false)
-  updated_at DateTime @updatedAt
-  room       Room     @relation(fields: [room_id], references: [id])
 }
 
 model SensorLog {
@@ -321,21 +311,21 @@ model DailySensorSummary {
 }
 
 model Device {
-  id              String     @id @default(cuid())
+  id              String      @id @default(cuid())
   name            String
   type            DeviceType
   room_id         String
-  room            Room       @relation(fields: [room_id], references: [id])
+  room            Room        @relation(fields: [room_id], references: [id])
   sensor_logs     SensorLog[]
   mqtt_topic      String?
   stream_url      String?
-  status          Boolean    @default(true)
-  is_on           Boolean    @default(false)
-  is_online       Boolean    @default(false)
-  last_seen_at DateTime?
+  status          Boolean     @default(true)
+  is_on           Boolean     @default(false)
+  is_online       Boolean     @default(false)
+  last_seen_at    DateTime?
   last_latency_ms Int?
-  created_at      DateTime   @default(now())
-  updated_at      DateTime   @updatedAt
+  created_at      DateTime    @default(now())
+  updated_at      DateTime    @updatedAt
 
   @@index([room_id])
   @@index([last_seen_at])

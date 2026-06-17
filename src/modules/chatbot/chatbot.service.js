@@ -15,7 +15,9 @@ const {
   resolveBuildingOrExplain,
   resolveLecturerOrExplain,
   resolveRoomOrExplain,
-  getRoomSchedulesForDay
+  getRoomSchedulesForDay,
+  getAvailableRoomsSnapshot,
+  getEnergyAnomaliesSnapshot
 } = require('./chatbot.data')
 const { buildTools } = require('./chatbot.tools')
 
@@ -66,7 +68,14 @@ const DOMAIN_KEYWORDS = [
   'dashboard',
   'konsumsi',
   'trend',
-  'anomali'
+  'anomali',
+  'rekomendasi',
+  'saran',
+  'kosong',
+  'optimal',
+  'efisien',
+  'boros',
+  'hemat'
 ]
 
 const FOLLOW_UP_KEYWORDS = [
@@ -280,7 +289,9 @@ const runToolCallingConversation = async ({
       getRoomSnapshot,
       resolveBuildingOrExplain,
       resolveLecturerOrExplain,
-      resolveRoomOrExplain
+      resolveRoomOrExplain,
+      getAvailableRoomsSnapshot,
+      getEnergyAnomaliesSnapshot
     }
   })
   const modelWithTools = model.bindTools(tools)

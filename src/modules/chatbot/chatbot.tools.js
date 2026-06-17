@@ -10,10 +10,12 @@ const buildTools = ({
 }) => {
   const {
     getBuildingSnapshot,
+    getEnergyAnomaliesSnapshot,
     getLecturerStatusSnapshot,
     getRoomLecturerStatuses,
     getRoomSchedulesForDay,
     getRoomSnapshot,
+    getAvailableRoomsSnapshot,
     resolveBuildingOrExplain,
     resolveLecturerOrExplain,
     resolveRoomOrExplain
@@ -169,6 +171,50 @@ const buildTools = ({
           room_id: resolvedRoom.id
         }
       })
+    },
+
+    find_available_rooms: async ({ building_id, building_name }) => {
+      const resolvedBuilding =
+        building_id || building_name || defaultBuildingId
+          ? await resolveBuildingOrExplain({
+              buildingId: building_id || defaultBuildingId || undefined,
+              buildingName: building_name
+            })
+          : null
+
+      if (resolvedBuilding?.ok === false) return resolvedBuilding
+
+      const effectiveBuildingId = resolvedBuilding?.id || defaultBuildingId || null
+      const availableRooms = await getAvailableRoomsSnapshot(effectiveBuildingId)
+
+      return buildToolResult({
+        data: availableRooms,
+        contextScope: {
+          building_id: effectiveBuildingId
+        }
+      })
+    },
+
+    get_energy_anomalies: async ({ building_id, building_name }) => {
+      const resolvedBuilding =
+        building_id || building_name || defaultBuildingId
+          ? await resolveBuildingOrExplain({
+              buildingId: building_id || defaultBuildingId || undefined,
+              buildingName: building_name
+            })
+          : null
+
+      if (resolvedBuilding?.ok === false) return resolvedBuilding
+
+      const effectiveBuildingId = resolvedBuilding?.id || defaultBuildingId || null
+      const anomalies = await getEnergyAnomaliesSnapshot(effectiveBuildingId)
+
+      return buildToolResult({
+        data: anomalies,
+        contextScope: {
+          building_id: effectiveBuildingId
+        }
+      })
     }
   }
 
@@ -224,6 +270,30 @@ const buildTools = ({
         .strict(),
       func: async (input) =>
         JSON.stringify(await executors.get_room_lecturers_status(input))
+    }),
+    new DynamicStructuredTool({
+      name: 'find_available_rooms',
+      description:
+        'Cari ruangan yang saat ini sedang kosong (tidak ada jadwal aktif). Berguna untuk merekomendasikan ruangan kosong kepada user.',
+      schema: z
+        .object({
+          building_id: z.string().optional(),
+          building_name: z.string().optional()
+        })
+        .strict(),
+      func: async (input) => JSON.stringify(await executors.find_available_rooms(input))
+    }),
+    new DynamicStructuredTool({
+      name: 'get_energy_anomalies',
+      description:
+        'Cari ruangan yang pemakaian dayanya tinggi (>100W) namun tidak ada jadwal kelas aktif. Berguna untuk mendeteksi pemborosan energi dan memberikan rekomendasi mematikan perangkat.',
+      schema: z
+        .object({
+          building_id: z.string().optional(),
+          building_name: z.string().optional()
+        })
+        .strict(),
+      func: async (input) => JSON.stringify(await executors.get_energy_anomalies(input))
     })
   ]
 

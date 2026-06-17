@@ -791,9 +791,138 @@ const getRoomLecturerStatuses = async (roomId) => {
   })
 }
 
+const getAvailableRoomsSnapshot = async (buildingId) => {
+  const { currentDay, currentTime } = getJakartaScheduleContext()
+
+  if (!currentDay) {
+    return {
+      unsupported: true,
+      message: 'Hari ini bukan hari kerja (Senin-Jumat).'
+    }
+  }
+
+  const rooms = await prisma.room.findMany({
+    where: {
+      status: true,
+      ...(buildingId ? { building_id: buildingId } : {})
+    },
+    select: {
+      id: true,
+      name: true,
+      building: { select: { id: true, name: true } }
+    },
+    orderBy: { name: 'asc' }
+  })
+
+  const activeSchedules = await prisma.schedule.findMany({
+    where: {
+      room_id: { in: rooms.map((r) => r.id) },
+      day: currentDay,
+      status: true,
+      time_slot: {
+        start_time: { lte: currentTime },
+        end_time: { gte: currentTime }
+      }
+    },
+    select: { room_id: true }
+  })
+
+  const occupiedRoomIds = new Set(activeSchedules.map((s) => s.room_id))
+  const availableRooms = rooms.filter((r) => !occupiedRoomIds.has(r.id))
+
+  const snapshots = await Promise.all(
+    availableRooms.map(async (room) => {
+      const [env, power] = await Promise.all([
+        getRoomEnvironment(room.id),
+        getLatestRoomPower(room.id)
+      ])
+      return {
+        room_id: room.id,
+        room_name: room.name,
+        building_name: room.building?.name || null,
+        temperature_c: env?.temperature_c || null,
+        humidity_percent: env?.humidity_percent || null,
+        power_watts: power?.power_watts || null
+      }
+    })
+  )
+
+  return {
+    is_today: true,
+    current_time: currentTime,
+    target_day: currentDay,
+    available_rooms: snapshots
+  }
+}
+
+const getEnergyAnomaliesSnapshot = async (buildingId) => {
+  const { currentDay, currentTime } = getJakartaScheduleContext()
+
+  const rooms = await prisma.room.findMany({
+    where: {
+      status: true,
+      ...(buildingId ? { building_id: buildingId } : {})
+    },
+    select: {
+      id: true,
+      name: true,
+      building: { select: { id: true, name: true } }
+    }
+  })
+
+  const roomsWithPower = await Promise.all(
+    rooms.map(async (room) => {
+      const power = await getLatestRoomPower(room.id)
+      return {
+        room_id: room.id,
+        room_name: room.name,
+        building_name: room.building?.name || null,
+        power_watts: power?.power_watts || 0
+      }
+    })
+  )
+
+  const highPowerRooms = roomsWithPower
+    .filter((r) => r.power_watts > 100)
+    .sort((a, b) => b.power_watts - a.power_watts)
+    .slice(0, 10)
+
+  if (highPowerRooms.length === 0) {
+    return { anomalies: [] }
+  }
+
+  const activeSchedules = currentDay
+    ? await prisma.schedule.findMany({
+        where: {
+          room_id: { in: highPowerRooms.map((r) => r.room_id) },
+          day: currentDay,
+          status: true,
+          time_slot: {
+            start_time: { lte: currentTime },
+            end_time: { gte: currentTime }
+          }
+        },
+        select: { room_id: true }
+      })
+    : []
+
+  const occupiedRoomIds = new Set(activeSchedules.map((s) => s.room_id))
+
+  const anomalies = highPowerRooms
+    .filter((r) => !occupiedRoomIds.has(r.room_id))
+    .map((r) => ({
+      ...r,
+      reason: 'Pemakaian daya tinggi (>100W) namun tidak ada jadwal kelas aktif saat ini.'
+    }))
+
+  return { anomalies }
+}
+
 module.exports = {
   buildToolResult,
+  getAvailableRoomsSnapshot,
   getBuildingSnapshot,
+  getEnergyAnomaliesSnapshot,
   getLecturerStatusSnapshot,
   getRoomLecturerStatuses,
   getRoomSchedulesForDay,

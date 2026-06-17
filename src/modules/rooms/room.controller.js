@@ -495,9 +495,6 @@ const roomController = {
                 sensor_logs: true,
                 devices: true
               }
-            },
-            device_status: {
-              select: { id: true }
             }
           },
           skip,
@@ -544,9 +541,6 @@ const roomController = {
               sensor_logs: true,
               devices: true
             }
-          },
-          device_status: {
-            select: { id: true }
           }
         }
       })
@@ -584,9 +578,6 @@ const roomController = {
               sensor_logs: true,
               devices: true
             }
-          },
-          device_status: {
-            select: { id: true }
           }
         }
       })
@@ -681,9 +672,6 @@ const roomController = {
               sensor_logs: true,
               devices: true
             }
-          },
-          device_status: {
-            select: { id: true }
           }
         }
       })
@@ -744,9 +732,6 @@ const roomController = {
               sensor_logs: true,
               devices: true
             }
-          },
-          device_status: {
-            select: { id: true }
           }
         }
       })
