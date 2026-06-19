@@ -65,6 +65,198 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * c // in metres
 }
 
+
+const processAttendanceAndLocation = async (req, res, lecturerId, isManual = false, similarity = null) => {
+  const now = new Date()
+  const { currentDay, currentTime } = getJakartaScheduleContext(now)
+  const { latitude: userLat, longitude: userLng } = req.body
+
+  // 1. Cari Jadwal Aktif (Sedang Berlangsung)
+  const activeSchedule = currentDay
+    ? await prisma.schedule.findFirst({
+        where: {
+          lecturer_id: lecturerId,
+          day: currentDay,
+          status: true,
+          time_slot: {
+            start_time: { lte: currentTime },
+            end_time: { gte: currentTime }
+          }
+        },
+        include: { room: { include: { building: true } }, time_slot: true }
+      })
+    : null
+
+  // 2. Cari Jadwal Mendatang (Persiapan Mengajar - 30 Menit Sebelumnya)
+  const upcomingSchedule = currentDay
+    ? await prisma.schedule.findFirst({
+        where: {
+          lecturer_id: lecturerId,
+          day: currentDay,
+          status: true,
+          time_slot: { start_time: { gt: currentTime } }
+        },
+        orderBy: { time_slot: { start_time: 'asc' } },
+        include: { room: { include: { building: true } }, time_slot: true }
+      })
+    : null
+
+  // 3. Ambil Data Dosen & Home Room (Ruang Dosen)
+  const lecturer = await prisma.lecturer.findUnique({
+    where: { id: lecturerId },
+    include: {
+      study_programs: {
+        include: {
+          study_program: {
+            include: { home_room: { include: { building: true } } }
+          }
+        }
+      }
+    }
+  })
+
+  // 4. Kumpulkan Semua Titik Lokasi Valid
+  const validPoints = []
+  let matchedRoomId = null
+
+  // Tambahkan Ruang Dosen dari tiap Prodi si Dosen
+  lecturer.study_programs.forEach((sp) => {
+    if (sp.study_program.home_room) {
+      validPoints.push({
+        name: `Ruang Dosen (${sp.study_program.name})`,
+        room: sp.study_program.home_room
+      })
+    }
+  })
+
+  // Tambahkan Ruang Jadwal Aktif
+  if (activeSchedule) {
+    validPoints.push({
+      name: `Ruang Kelas Aktif (${activeSchedule.room.name})`,
+      room: activeSchedule.room
+    })
+  }
+
+  // Tambahkan Ruang Jadwal Mendatang (Jika dalam 30 menit)
+  if (upcomingSchedule) {
+    const [currH, currM] = currentTime.split(':').map(Number)
+    const [startH, startM] = upcomingSchedule.time_slot.start_time
+      .split(':')
+      .map(Number)
+    const diffMinutes = startH * 60 + startM - (currH * 60 + currM)
+
+    if (diffMinutes <= 30) {
+      validPoints.push({
+        name: `Persiapan Kelas (${upcomingSchedule.room.name})`,
+        room: upcomingSchedule.room
+      })
+    }
+  }
+
+  // 5. Validasi Lokasi User
+  if (validPoints.length > 0) {
+    if (!userLat || !userLng) {
+      return error(
+        res,
+        'Location coordinates (latitude & longitude) are required for verification',
+        400
+      )
+    }
+
+    let isAtValidLocation = false
+    let minDistance = Infinity
+    let closestTarget = ''
+
+    for (const point of validPoints) {
+      const lat = point.room.building?.latitude
+      const lng = point.room.building?.longitude
+      const radius = point.room.building?.radius || 100
+
+      if (lat && lng) {
+        const distance = calculateDistance(
+          parseFloat(userLat),
+          parseFloat(userLng),
+          lat,
+          lng
+        )
+
+        if (distance <= radius) {
+          isAtValidLocation = true
+          matchedRoomId = point.room.id // <--- Ambil ID ruangan ini
+          break
+        }
+
+        if (distance < minDistance) {
+          minDistance = distance
+          closestTarget = point.name
+        }
+      }
+    }
+
+    if (!isAtValidLocation) {
+      return error(
+        res,
+        `You are too far from any valid location. Closest to: ${closestTarget} (${Math.round(minDistance)}m)`,
+        403
+      )
+    }
+  }
+
+  try {
+    await prisma.attendance.create({
+      data: {
+        lecturer_id: lecturerId,
+        room_id: matchedRoomId // <--- Simpan ke database
+      }
+    })
+  } catch (e) {
+    console.error('Attendance Logging Error:', e.message)
+  }
+
+  // --- UPDATE STATUS DOSEN ---
+  // Setelah attendance tercatat:
+  // - Jika sedang ada jadwal aktif => BUSY
+  // - Selain itu => AVAILABLE
+  const nextStatus = activeSchedule ? 'BUSY' : 'AVAILABLE'
+  const updated = await prisma.lecturer.update({
+    where: { id: lecturerId },
+    data: {
+      status: nextStatus,
+      is_manual: false,
+      overridden_at: null,
+      last_auto_status: nextStatus
+    }
+  })
+
+  // Emit socket event so the dashboard Updates for everyone
+  try {
+    getIO().emit('lecturer-status-updated', {
+      id: updated.id,
+      status: updated.status,
+      is_manual: updated.is_manual
+    })
+  } catch (e) {
+    console.error(`Socket Emit Error (${isManual ? 'Manual' : 'Face'} Verification):`, e.message)
+  }
+
+  emitActivityLogUpdate(
+    addActivityLog({
+      category: 'PRESENCE',
+      message: `${updated.status === 'BUSY' ? 'Lecturer check-in confirmed for active class.' : 'Lecturer check-in recorded and marked available.'}`
+    })
+  )
+
+  const payload = {
+    lecturer_id: lecturerId,
+    status: updated.status
+  }
+  if (similarity !== null) {
+    payload.similarity = parseFloat(similarity.toFixed(4))
+  }
+
+  return success(res, isManual ? 'Manual verification successful' : 'Face verified', payload)
+}
+
 const faceRecognitionController = {
   register: async (req, res) => {
     const file = req.file
@@ -347,6 +539,25 @@ const faceRecognitionController = {
       if (err.message.includes('Face not detected'))
         return error(res, err.message, 400)
       console.error('Verify Error:', err)
+      return error(res, err.message, 500)
+    }
+  },
+
+  manualVerify: async (req, res) => {
+    try {
+      const user = req.user
+      const roleIdentity = user.role?.code?.toUpperCase()
+
+      const lecturerId =
+        roleIdentity === 'SUPER_ADMIN' || roleIdentity === 'SA'
+          ? req.body?.lecturer_id || user?.lecturer?.id
+          : user?.lecturer?.id
+
+      if (!lecturerId) return error(res, 'Lecturer profile not found', 403)
+
+      return await processAttendanceAndLocation(req, res, lecturerId, true)
+    } catch (err) {
+      console.error('Manual Verify Error:', err)
       return error(res, err.message, 500)
     }
   },

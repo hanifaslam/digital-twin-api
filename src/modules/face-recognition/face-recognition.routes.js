@@ -23,6 +23,7 @@ router.post(
   faceRecognitionController.register
 )
 router.post('/verify', upload.single('image'), faceRecognitionController.verify)
+router.post('/verify/manual', faceRecognitionController.manualVerify)
 router.get('/status', faceRecognitionController.checkStatus)
 router.get('/status/:lecturer_id', faceRecognitionController.checkStatus)
 router.delete('/unregister', faceRecognitionController.unregister)
