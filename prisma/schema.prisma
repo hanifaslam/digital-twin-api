@@ -314,8 +314,8 @@ model Device {
   id              String      @id @default(cuid())
   name            String
   type            DeviceType
-  room_id         String
-  room            Room        @relation(fields: [room_id], references: [id])
+  room_id         String?
+  room            Room?       @relation(fields: [room_id], references: [id])
   sensor_logs     SensorLog[]
   mqtt_topic      String?
   stream_url      String?

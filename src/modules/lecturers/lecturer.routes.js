@@ -20,7 +20,9 @@ router.post(
   lecturerController.uploadExcel
 )
 router.get('/all', lecturerController.getAllActive)
+router.get('/attendance-history', lecturerController.getAttendanceHistory)
 router.get('/', lecturerController.getAll)
+router.get('/:id/activity-log', lecturerController.getActivityLog)
 router.get('/:id', lecturerController.getById)
 router.patch('/:id', validate(updateLecturerSchema), lecturerController.update)
 router.patch('/status/override', lecturerController.overrideStatus)

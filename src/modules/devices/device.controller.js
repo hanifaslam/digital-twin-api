@@ -27,20 +27,26 @@ const deviceController = {
       const { name, type, room_id, mqtt_topic, stream_url, status } =
         req.body || {}
 
-      if (!name || !type || !room_id) {
+      if (!name || !type) {
         return error(res, 'Missing required fields', 400)
       }
 
-      const roomExists = await prisma.room.findUnique({
-        where: { id: room_id }
-      })
-      if (!roomExists) return error(res, 'Room not found', 404)
+      if (type.toUpperCase() !== 'CCTV' && !room_id) {
+        return error(res, 'Room is required for this device type', 400)
+      }
+
+      if (room_id) {
+        const roomExists = await prisma.room.findUnique({
+          where: { id: room_id }
+        })
+        if (!roomExists) return error(res, 'Room not found', 404)
+      }
 
       await prisma.device.create({
         data: {
           name,
           type: type.toUpperCase(),
-          room_id,
+          room_id: room_id || null,
           mqtt_topic: mqtt_topic || null,
           stream_url: stream_url || null,
           status:
@@ -400,6 +406,37 @@ const deviceController = {
       publish(device.mqtt_topic, message)
 
       return success(res, `Device command '${message}' sent`)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
+  },
+
+  getCctvStreams: async (req, res) => {
+    try {
+      const cctvs = await prisma.device.findMany({
+        where: {
+          type: 'CCTV'
+        },
+        select: {
+          id: true,
+          name: true,
+          stream_url: true,
+          room: {
+            select: {
+              name: true
+            }
+          }
+        }
+      })
+
+      const result = cctvs.map((cctv) => ({
+        id: cctv.id,
+        name: cctv.name,
+        stream_url: cctv.stream_url,
+        room_name: cctv.room?.name || null
+      }))
+
+      return success(res, 'success', result)
     } catch (err) {
       return error(res, err.message, 500)
     }

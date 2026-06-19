@@ -3,7 +3,11 @@ const router = express.Router()
 const deviceController = require('./device.controller')
 const { validate } = require('../../common/middlewares/validate.middleware')
 const { createDeviceSchema, updateDeviceSchema } = require('./device.schema')
+const { authMiddleware } = require('../../common/middlewares/auth.middleware')
 
+router.get('/cctv/streams', deviceController.getCctvStreams)
+
+router.use(authMiddleware)
 router.get('/types', deviceController.getTypes)
 router.post('/', validate(createDeviceSchema), deviceController.create)
 router.get('/', deviceController.getAll)
