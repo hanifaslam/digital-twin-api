@@ -300,6 +300,7 @@ model SensorLog {
 model DailySensorSummary {
   id           String   @id @default(cuid())
   room_id      String
+  device_id    String?
   avg_voltage  Float?
   avg_current  Float?
   avg_power    Float?
@@ -307,8 +308,9 @@ model DailySensorSummary {
   date         DateTime
   created_at   DateTime @default(now())
   room         Room     @relation(fields: [room_id], references: [id])
+  device       Device?  @relation(fields: [device_id], references: [id])
 
-  @@unique([room_id, date])
+  @@unique([room_id, device_id, date])
 }
 
 model Device {
@@ -318,6 +320,7 @@ model Device {
   room_id         String?
   room            Room?       @relation(fields: [room_id], references: [id])
   sensor_logs     SensorLog[]
+  daily_sensor_summaries DailySensorSummary[]
   mqtt_topic      String?
   stream_url      String?
   status          Boolean     @default(true)
@@ -338,6 +341,7 @@ enum DeviceType {
   LIGHT
   CCTV
   SENSOR
+  DEVICE
 }
 
 enum CourseSemester {

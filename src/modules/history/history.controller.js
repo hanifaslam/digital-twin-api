@@ -510,6 +510,265 @@ const historyController = {
       console.error('Export Excel Error:', err)
       return error(res, err.message, 500)
     }
+  },
+
+  getDeviceHistory: async (req, res) => {
+    try {
+      const page = parseInt(req.query.page) || 1
+      const perPage = parseInt(req.query.per_page) || 10
+      const skip = (page - 1) * perPage
+
+      const { q, start_date, end_date, room_id, building_id } = req.query || {}
+      const search = q?.trim()
+
+      let where = {
+        device_id: { not: null }
+      }
+
+      if (start_date || end_date) {
+        where.date = {}
+        if (start_date) {
+          const start = new Date(start_date)
+          if (!isNaN(start.getTime())) {
+            where.date.gte = start
+          }
+        }
+        if (end_date) {
+          const end = new Date(end_date)
+          if (!isNaN(end.getTime())) {
+            if (String(end_date).length === 10) {
+              end.setUTCHours(23, 59, 59, 999)
+            }
+            where.date.lte = end
+          }
+        }
+        if (Object.keys(where.date).length === 0) {
+          delete where.date
+        }
+      }
+
+      if (room_id) {
+        where.room_id = room_id
+      }
+
+      if (building_id) {
+        where.room = {
+          building_id: building_id
+        }
+      }
+
+      if (search) {
+        where.OR = [
+          { device: { name: { contains: search, mode: 'insensitive' } } },
+          { room: { name: { contains: search, mode: 'insensitive' } } }
+        ]
+      }
+
+      const [summaries, total] = await Promise.all([
+        prisma.dailySensorSummary.findMany({
+          where,
+          skip,
+          take: perPage,
+          include: {
+            device: { select: { name: true, type: true } },
+            room: { select: { name: true } }
+          },
+          orderBy: { date: 'desc' }
+        }),
+        prisma.dailySensorSummary.count({ where })
+      ])
+
+      const formattedData = summaries.map((summary) => {
+        const d = new Date(summary.date)
+        const day = String(d.getDate()).padStart(2, '0')
+        const month = String(d.getMonth() + 1).padStart(2, '0')
+        const year = d.getFullYear()
+
+        return {
+          id: summary.id,
+          device_id: summary.device_id,
+          device_name: summary.device?.name || '-',
+          device_type: summary.device?.type || '-',
+          room_name: summary.room?.name || '-',
+          date: `${day}-${month}-${year}`,
+          total_energy: summary.total_energy || 0
+        }
+      })
+
+      const metadata = buildPagination(page, perPage, total)
+
+      return success(res, 'success', formattedData, 200, metadata)
+    } catch (err) {
+      console.error('getDeviceHistory Error:', err)
+      return error(res, err.message, 500)
+    }
+  },
+
+  exportDeviceHistory: async (req, res) => {
+    try {
+      const { q, start_date, end_date, room_id, building_id } = req.query || {}
+      const search = q?.trim()
+      
+      let where = {
+        device_id: { not: null }
+      }
+
+      if (start_date || end_date) {
+        where.date = {}
+        if (start_date) {
+          const start = new Date(start_date)
+          if (!isNaN(start.getTime())) {
+            where.date.gte = start
+          }
+        }
+        if (end_date) {
+          const end = new Date(end_date)
+          if (!isNaN(end.getTime())) {
+            if (String(end_date).length === 10) {
+              end.setUTCHours(23, 59, 59, 999)
+            }
+            where.date.lte = end
+          }
+        }
+        if (Object.keys(where.date).length === 0) {
+          delete where.date
+        }
+      }
+
+      if (room_id) {
+        where.room_id = room_id
+      }
+
+      if (building_id) {
+        where.room = {
+          building_id: building_id
+        }
+      }
+
+      if (search) {
+        where.OR = [
+          { device: { name: { contains: search, mode: 'insensitive' } } },
+          { room: { name: { contains: search, mode: 'insensitive' } } }
+        ]
+      }
+
+      const summaries = await prisma.dailySensorSummary.findMany({
+        where,
+        include: {
+          device: { select: { name: true, type: true } },
+          room: { select: { name: true } }
+        },
+        orderBy: { date: 'desc' }
+      })
+
+      const formattedData = summaries.map((summary, index) => {
+        const d = new Date(summary.date)
+        const day = String(d.getDate()).padStart(2, '0')
+        const month = String(d.getMonth() + 1).padStart(2, '0')
+        const year = d.getFullYear()
+
+        return {
+          'No': index + 1,
+          'Device Name': summary.device?.name || '-',
+          'Type': summary.device?.type || '-',
+          'Room': summary.room?.name || '-',
+          'Date': `${day}-${month}-${year}`,
+          'Energy (kWh)': summary.total_energy || 0
+        }
+      })
+
+      const workbook = new ExcelJS.Workbook()
+      const worksheet = workbook.addWorksheet('Device History')
+
+      // Add Title
+      worksheet.mergeCells('A1:F1')
+      const titleCell = worksheet.getCell('A1')
+      titleCell.value = 'DEVICE ENERGY HISTORY'
+      titleCell.font = { name: 'Arial', size: 14, bold: true }
+      titleCell.alignment = { vertical: 'middle', horizontal: 'center' }
+
+      // Add an empty row for spacing
+      worksheet.addRow([])
+
+      // Define Headers
+      const headerRow = worksheet.addRow([
+        'No',
+        'Device Name',
+        'Type',
+        'Room',
+        'Date',
+        'Energy (kWh)'
+      ])
+
+      // Style Headers
+      headerRow.font = { bold: true }
+      headerRow.alignment = { vertical: 'middle', horizontal: 'center' }
+      headerRow.eachCell((cell) => {
+        cell.fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FFD3D3D3' } // Light grey
+        }
+        cell.border = {
+          top: { style: 'thin' },
+          left: { style: 'thin' },
+          bottom: { style: 'thin' },
+          right: { style: 'thin' }
+        }
+      })
+
+      // Add Data
+      formattedData.forEach((row) => {
+        const dataRow = worksheet.addRow([
+          row['No'],
+          row['Device Name'],
+          row['Type'],
+          row['Room'],
+          row['Date'],
+          row['Energy (kWh)']
+        ])
+
+        // Style Data Cells
+        dataRow.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin' },
+            left: { style: 'thin' },
+            bottom: { style: 'thin' },
+            right: { style: 'thin' }
+          }
+          // Align No, Date, Energy to center
+          if ([1, 5, 6].includes(cell.col)) {
+            cell.alignment = { vertical: 'middle', horizontal: 'center' }
+          } else {
+            cell.alignment = { vertical: 'middle', horizontal: 'left' }
+          }
+        })
+      })
+
+      // Set column widths
+      worksheet.getColumn(1).width = 5
+      worksheet.getColumn(2).width = 30
+      worksheet.getColumn(3).width = 20
+      worksheet.getColumn(4).width = 30
+      worksheet.getColumn(5).width = 15
+      worksheet.getColumn(6).width = 20
+
+      const buffer = await workbook.xlsx.writeBuffer()
+
+      res.setHeader(
+        'Content-Disposition',
+        'attachment; filename="device_history.xlsx"'
+      )
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      )
+
+      return res.send(buffer)
+    } catch (err) {
+      console.error('Export Excel Error:', err)
+      return error(res, err.message, 500)
+    }
   }
 }
 
