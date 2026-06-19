@@ -250,6 +250,7 @@ model Attendance {
   id          String   @id @default(cuid())
   lecturer_id String
   room_id     String?
+  type        String   @default("FACE")
   check_in_at DateTime @default(now())
   lecturer    Lecturer @relation(fields: [lecturer_id], references: [id])
   room        Room?    @relation(fields: [room_id], references: [id])
