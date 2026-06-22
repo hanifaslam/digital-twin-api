@@ -7,7 +7,7 @@ const createDeviceSchema = z
   .object({
     name: z.string().min(1, 'Name is required'),
     type: z.enum(DeviceType, { message: 'Invalid device type' }),
-    room_id: z.string().min(1, 'Room ID is required'),
+    room_id: z.string().optional(),
     mqtt_topic: z.string().optional(),
     stream_url: z.string().optional(),
     status: statusField
