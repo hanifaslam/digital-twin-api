@@ -69,6 +69,27 @@ app.use((req, res) => {
 // Error Handling
 app.use((err, req, res, next) => {
   console.error(err.stack)
+
+  if (err.code === 'P2003') {
+    return error(
+      res,
+      'Cannot save or delete: This record is still in use or referenced by other records.',
+      400
+    )
+  }
+
+  if (err.code === 'P2002') {
+    return error(
+      res,
+      'Data already exists (duplicate). Please use different data.',
+      400
+    )
+  }
+
+  if (err.code === 'P2025') {
+    return error(res, 'Record not found.', 404)
+  }
+
   return error(
     res,
     process.env.NODE_ENV === 'development'
