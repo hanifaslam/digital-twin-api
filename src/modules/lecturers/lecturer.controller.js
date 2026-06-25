@@ -67,7 +67,12 @@ const normalizeName = (value) =>
     .replace(/\s+/g, ' ')
 
 const buildNameSlug = (value) => {
-  const normalized = normalizeName(value)
+  // Hapus gelar di belakang (setelah koma)
+  let nameWithoutTitles = value ? String(value).split(',')[0] : ''
+  // Hapus awalan gelar umum
+  nameWithoutTitles = nameWithoutTitles.replace(/\b(prof|dr|ir|drs|dra|h|hj)\b\.?/gi, '')
+
+  const normalized = normalizeName(nameWithoutTitles)
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
