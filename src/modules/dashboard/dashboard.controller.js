@@ -231,14 +231,14 @@ const findAttendanceOccurrenceIndex = (
   const candidates = occurrences
     .map((occurrence, index) => ({ occurrence, index }))
     .filter(({ occurrence, index }) => {
+      if (occurrence.end_at > new Date('2026-06-29T00:00:00Z')) {
+        console.log(`[DEBUG2] Atk: ${attendance.check_in_at.toISOString()}, OccEnd: ${occurrence.end_at.toISOString()}, room match: ${!attendance.room_id || occurrence.room_id === attendance.room_id}`)
+      }
+
       if (usedIndexes.has(index)) return false
       if (buildDateKey(occurrence.start_at) !== attendanceDateKey) return false
       if (attendance.room_id && occurrence.room_id !== attendance.room_id)
         return false
-
-      if (attendanceDateKey === buildDateKey(new Date())) {
-        console.log(`[DEBUG] Atk: ${attendance.check_in_at.toISOString()}, OccEnd: ${occurrence.end_at.toISOString()}, isMatch: ${attendance.check_in_at <= occurrence.end_at}`)
-      }
 
       return attendance.check_in_at <= occurrence.end_at
     })
