@@ -235,6 +235,11 @@ const findAttendanceOccurrenceIndex = (
       if (buildDateKey(occurrence.start_at) !== attendanceDateKey) return false
       if (attendance.room_id && occurrence.room_id !== attendance.room_id)
         return false
+
+      if (attendanceDateKey === buildDateKey(new Date())) {
+        console.log(`[DEBUG] Atk: ${attendance.check_in_at.toISOString()}, OccEnd: ${occurrence.end_at.toISOString()}, isMatch: ${attendance.check_in_at <= occurrence.end_at}`)
+      }
+
       return attendance.check_in_at <= occurrence.end_at
     })
     .sort((a, b) => a.occurrence.start_at - b.occurrence.start_at)
