@@ -169,7 +169,10 @@ const enumerateScheduleOccurrences = (schedule, startDate, endDate) => {
       continue
     }
 
-    const weekday = new Date(cursorStart).getUTCDay()
+    const DAY_NAME_TO_WEEKDAY = {
+      Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6
+    }
+    const weekday = DAY_NAME_TO_WEEKDAY[cursorParts.weekday]
     if (weekday === targetWeekday) {
       const [startHour, startMinute] = (
         schedule.time_slot?.start_time || '00:00'
