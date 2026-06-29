@@ -119,17 +119,7 @@ const processAttendanceAndLocation = async (req, res, lecturerId, isManual = fal
   const validPoints = []
   let matchedRoomId = null
 
-  // Tambahkan Ruang Dosen dari tiap Prodi si Dosen
-  lecturer.study_programs.forEach((sp) => {
-    if (sp.study_program.home_room) {
-      validPoints.push({
-        name: `Ruang Dosen (${sp.study_program.name})`,
-        room: sp.study_program.home_room
-      })
-    }
-  })
-
-  // Tambahkan Ruang Jadwal Aktif
+  // 1. Tambahkan Ruang Jadwal Aktif (Prioritas Tertinggi)
   if (activeSchedule) {
     validPoints.push({
       name: `Ruang Kelas Aktif (${activeSchedule.room.name})`,
@@ -137,7 +127,7 @@ const processAttendanceAndLocation = async (req, res, lecturerId, isManual = fal
     })
   }
 
-  // Tambahkan Ruang Jadwal Mendatang (Jika dalam 30 menit)
+  // 2. Tambahkan Ruang Jadwal Mendatang (Prioritas Kedua)
   if (upcomingSchedule) {
     const [currH, currM] = currentTime.split(':').map(Number)
     const [startH, startM] = upcomingSchedule.time_slot.start_time
@@ -152,6 +142,16 @@ const processAttendanceAndLocation = async (req, res, lecturerId, isManual = fal
       })
     }
   }
+
+  // 3. Tambahkan Ruang Dosen dari tiap Prodi (Prioritas Terakhir)
+  lecturer.study_programs.forEach((sp) => {
+    if (sp.study_program.home_room) {
+      validPoints.push({
+        name: `Ruang Dosen (${sp.study_program.name})`,
+        room: sp.study_program.home_room
+      })
+    }
+  })
 
   // 5. Validasi Lokasi User
   if (validPoints.length > 0) {

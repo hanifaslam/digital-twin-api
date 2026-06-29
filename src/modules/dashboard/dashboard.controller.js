@@ -203,6 +203,7 @@ const enumerateScheduleOccurrences = (schedule, startDate, endDate) => {
       occurrences.push({
         schedule_id: schedule.id,
         room_id: schedule.room_id,
+        building_id: schedule.room?.building_id,
         start_at: startAt,
         end_at: endAt,
         duration_hours: getScheduleDurationHours(schedule)
@@ -231,14 +232,13 @@ const findAttendanceOccurrenceIndex = (
   const candidates = occurrences
     .map((occurrence, index) => ({ occurrence, index }))
     .filter(({ occurrence, index }) => {
-      if (occurrence.end_at > new Date('2026-06-29T00:00:00Z')) {
-        console.log(`[DEBUG2] Atk: ${attendance.check_in_at.toISOString()}, OccEnd: ${occurrence.end_at.toISOString()}, room match: ${!attendance.room_id || occurrence.room_id === attendance.room_id}`)
-      }
 
       if (usedIndexes.has(index)) return false
       if (buildDateKey(occurrence.start_at) !== attendanceDateKey) return false
-      if (attendance.room_id && occurrence.room_id !== attendance.room_id)
+      
+      if (attendance.room?.building_id && occurrence.building_id !== attendance.room.building_id) {
         return false
+      }
 
       return attendance.check_in_at <= occurrence.end_at
     })
@@ -1307,6 +1307,9 @@ const dashboardController = {
           include: {
             time_slot: {
               select: { start_time: true, end_time: true }
+            },
+            room: {
+              select: { building_id: true }
             }
           }
         }),
@@ -1317,6 +1320,9 @@ const dashboardController = {
               gte: startOfSemester,
               lte: endOfToday
             }
+          },
+          include: {
+            room: { select: { building_id: true } }
           },
           orderBy: { check_in_at: 'asc' }
         })
