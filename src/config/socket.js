@@ -45,6 +45,18 @@ const initSocket = (server) => {
       socket.join(`${roomEnvironmentPrefix}${room_id}`)
     })
 
+    socket.on('room-schedules:get', async ({ room_id } = {}) => {
+      if (!room_id) return
+
+      try {
+        const { getRoomSchedulesData } = require('../modules/rooms/room.controller')
+        const schedules = await getRoomSchedulesData(room_id)
+        socket.emit('room-schedules:data', { room_id, schedules })
+      } catch (err) {
+        console.error('Error fetching schedules for socket:', err)
+      }
+    })
+
     socket.on('room-environment:unsubscribe', ({ room_id } = {}) => {
       if (!room_id) return
 

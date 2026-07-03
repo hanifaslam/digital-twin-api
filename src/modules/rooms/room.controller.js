@@ -148,6 +148,63 @@ const mergeContiguousRoomSchedules = (items = [], currentTime = '00:00') => {
   return grouped
 }
 
+const getRoomSchedulesData = async (room_id) => {
+  const { currentDay, currentTime } = getJakartaScheduleContext()
+
+  if (!currentDay) {
+    return []
+  }
+
+  const schedules = await prisma.schedule.findMany({
+    where: {
+      room_id: room_id,
+      day: currentDay,
+      status: true
+    },
+    include: {
+      course: {
+        select: { name: true, code: true }
+      },
+      class: {
+        select: { id: true, name: true }
+      },
+      time_slot: {
+        select: { start_time: true, end_time: true }
+      },
+      lecturer: {
+        include: {
+          user: {
+            select: { name: true }
+          }
+        }
+      }
+    },
+    orderBy: {
+      time_slot: {
+        start_time: 'asc'
+      }
+    }
+  })
+
+  const formattedSchedules = schedules.map((s) => ({
+    id: s.id,
+    course_name: s.course.name,
+    course_code: s.course.code,
+    class_id: s.class?.id || null,
+    class_name: s.class?.name || null,
+    start_time: s.time_slot.start_time,
+    end_time: s.time_slot.end_time,
+    is_online:
+      currentTime >= s.time_slot.start_time &&
+      currentTime <= s.time_slot.end_time,
+    is_passed: currentTime > s.time_slot.end_time,
+    is_upcoming: currentTime < s.time_slot.start_time,
+    lecturer_name: s.lecturer.user?.name || 'N/A'
+  }))
+
+  return mergeContiguousRoomSchedules(formattedSchedules, currentTime)
+}
+
 const roomController = {
   downloadTemplate: async (req, res) => {
     try {
@@ -765,63 +822,7 @@ const roomController = {
         return error(res, 'room_id path parameter is required', 400)
       }
 
-      const { currentDay, currentTime } = getJakartaScheduleContext()
-
-      if (!currentDay) {
-        return success(res, 'success', [])
-      }
-
-      const schedules = await prisma.schedule.findMany({
-        where: {
-          room_id: room_id,
-          day: currentDay,
-          status: true
-        },
-        include: {
-          course: {
-            select: { name: true, code: true }
-          },
-          class: {
-            select: { id: true, name: true }
-          },
-          time_slot: {
-            select: { start_time: true, end_time: true }
-          },
-          lecturer: {
-            include: {
-              user: {
-                select: { name: true }
-              }
-            }
-          }
-        },
-        orderBy: {
-          time_slot: {
-            start_time: 'asc'
-          }
-        }
-      })
-
-      const formattedSchedules = schedules.map((s) => ({
-        id: s.id,
-        course_name: s.course.name,
-        course_code: s.course.code,
-        class_id: s.class?.id || null,
-        class_name: s.class?.name || null,
-        start_time: s.time_slot.start_time,
-        end_time: s.time_slot.end_time,
-        is_online:
-          currentTime >= s.time_slot.start_time &&
-          currentTime <= s.time_slot.end_time,
-        is_passed: currentTime > s.time_slot.end_time,
-        is_upcoming: currentTime < s.time_slot.start_time,
-        lecturer_name: s.lecturer.user?.name || 'N/A'
-      }))
-
-      const mergedSchedules = mergeContiguousRoomSchedules(
-        formattedSchedules,
-        currentTime
-      )
+      const mergedSchedules = await getRoomSchedulesData(room_id)
 
       return success(res, 'success', mergedSchedules)
     } catch (err) {
@@ -858,4 +859,7 @@ const roomController = {
   }
 }
 
-module.exports = roomController
+module.exports = {
+  ...roomController,
+  getRoomSchedulesData
+}
