@@ -205,6 +205,211 @@ const formatImportedLecturer = (lecturer) => ({
   study_programs: formatStudyProgramsForShow(lecturer.study_programs)
 })
 
+const getRoomLecturersData = async (room_id, search = '') => {
+  const { currentDay, currentTime } = getJakartaScheduleContext()
+  const { start: startOfDay } = getJakartaDayRange()
+
+  const lecturers = await prisma.lecturer.findMany({
+    where: {
+      AND: [
+        {
+          user: {
+            role: {
+              code: {
+                notIn: ['SA', 'SUPER_ADMIN', 'AD']
+              }
+            }
+          }
+        },
+        {
+          OR: [
+            ...(currentDay
+              ? [
+                  {
+                    // Dosen yang sedang mengajar di ruangan ini sekarang
+                    schedules: {
+                      some: {
+                        room_id: room_id,
+                        day: currentDay,
+                        status: true,
+                        time_slot: {
+                          start_time: { lte: currentTime },
+                          end_time: { gte: currentTime }
+                        }
+                      }
+                    }
+                  }
+                ]
+              : []),
+            {
+              // Dosen yang ruangan aslinya (home room) adalah ruangan ini
+              study_programs: {
+                some: {
+                  study_program: {
+                    home_room_id: room_id
+                  }
+                }
+              }
+            }
+          ]
+        },
+        ...(search
+          ? [
+              {
+                OR: [
+                  {
+                    user: {
+                      name: {
+                        contains: search,
+                        mode: 'insensitive'
+                      }
+                    }
+                  },
+                  {
+                    nip: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    status: {
+                      contains: search,
+                      mode: 'insensitive'
+                    }
+                  },
+                  {
+                    schedules: {
+                      some: {
+                        room_id: room_id,
+                        day: currentDay || undefined,
+                        status: true,
+                        course: {
+                          name: {
+                            contains: search,
+                            mode: 'insensitive'
+                          }
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          : [])
+      ]
+    },
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          profile_picture: true
+        }
+      },
+      study_programs: {
+        include: {
+          study_program: {
+            select: {
+              id: true,
+              name: true,
+              home_room_id: true
+            }
+          }
+        }
+      },
+      schedules: {
+        where: {
+          day: currentDay || undefined,
+          status: true
+        },
+        include: {
+          room: {
+            include: {
+              building: true,
+              floor: true
+            }
+          },
+          time_slot: true,
+          course: true
+        }
+      },
+      attendances: {
+        where: {
+          room_id: room_id,
+          check_in_at: {
+            gte: startOfDay
+          }
+        },
+        orderBy: {
+          check_in_at: 'desc'
+        },
+        take: 1
+      }
+    },
+    orderBy: {
+      user: {
+        name: 'asc'
+      }
+    }
+  })
+
+  const formattedLecturers = lecturers.map((lecturer) => {
+    const activeSchedule = lecturer.schedules.find((s) => {
+      const { start_time, end_time } = s.time_slot
+      return currentTime >= start_time && currentTime <= end_time
+    })
+
+    // Tentukan apakah dosen ini "milik" ruangan ini lewat jadwal atau home room
+    const isInRoomBySchedule = activeSchedule?.room_id === room_id
+
+    let roomType = 'HOME'
+    let courseName = null
+
+    if (isInRoomBySchedule) {
+      roomType = 'SCHEDULED'
+      courseName = activeSchedule.course.name
+    }
+
+    const latestAttendance = lecturer.attendances[0]
+    let presentSince = latestAttendance ? latestAttendance.check_in_at : null
+
+    if (!presentSince && ['AVAILABLE', 'BUSY'].includes(lecturer.status) && lecturer.is_manual) {
+      presentSince = lecturer.overridden_at
+    }
+
+    return {
+      id: lecturer.id,
+      name: lecturer.user?.name,
+      nip: lecturer.nip,
+      phone_number: lecturer.phone_number,
+      profile_picture: lecturer.user?.profile_picture || null,
+      status: lecturer.status, // AVAILABLE, BUSY, OFFLINE
+      room_type: roomType,
+      course: courseName,
+      present_since: presentSince
+    }
+  })
+
+  const statusPriority = {
+    AVAILABLE: 0,
+    BUSY: 1,
+    OFFLINE: 2
+  }
+
+  formattedLecturers.sort((a, b) => {
+    const statusDiff =
+      (statusPriority[a.status] ?? Number.MAX_SAFE_INTEGER) -
+      (statusPriority[b.status] ?? Number.MAX_SAFE_INTEGER)
+
+    if (statusDiff !== 0) return statusDiff
+    return (a.name || '').localeCompare(b.name || '', 'id', {
+      sensitivity: 'base'
+    })
+  })
+
+  return formattedLecturers
+}
+
 const lecturerController = {
   downloadTemplate: async (req, res) => {
     try {
@@ -819,211 +1024,12 @@ const lecturerController = {
   getPublicLecturers: async (req, res) => {
     try {
       const { id: room_id } = req.params
-      const search = req.query?.q?.trim()
+      const search = req.query?.q?.trim() || ''
       if (!room_id) {
         return error(res, 'room_id path parameter is required', 400)
       }
 
-      const { currentDay, currentTime } = getJakartaScheduleContext()
-      const { start: startOfDay } = getJakartaDayRange()
-
-      const lecturers = await prisma.lecturer.findMany({
-        where: {
-          AND: [
-            {
-              user: {
-                role: {
-                  code: {
-                    notIn: ['SA', 'SUPER_ADMIN', 'AD']
-                  }
-                }
-              }
-            },
-            {
-              OR: [
-                ...(currentDay
-                  ? [
-                      {
-                        // Dosen yang sedang mengajar di ruangan ini sekarang
-                        schedules: {
-                          some: {
-                            room_id: room_id,
-                            day: currentDay,
-                            status: true,
-                            time_slot: {
-                              start_time: { lte: currentTime },
-                              end_time: { gte: currentTime }
-                            }
-                          }
-                        }
-                      }
-                    ]
-                  : []),
-                {
-                  // Dosen yang ruangan aslinya (home room) adalah ruangan ini
-                  study_programs: {
-                    some: {
-                      study_program: {
-                        home_room_id: room_id
-                      }
-                    }
-                  }
-                }
-              ]
-            },
-            ...(search
-              ? [
-                  {
-                    OR: [
-                      {
-                        user: {
-                          name: {
-                            contains: search,
-                            mode: 'insensitive'
-                          }
-                        }
-                      },
-                      {
-                        nip: {
-                          contains: search,
-                          mode: 'insensitive'
-                        }
-                      },
-                      {
-                        status: {
-                          contains: search,
-                          mode: 'insensitive'
-                        }
-                      },
-                      {
-                        schedules: {
-                          some: {
-                            room_id: room_id,
-                            day: currentDay || undefined,
-                            status: true,
-                            course: {
-                              name: {
-                                contains: search,
-                                mode: 'insensitive'
-                              }
-                            }
-                          }
-                        }
-                      }
-                    ]
-                  }
-                ]
-              : [])
-          ]
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              profile_picture: true
-            }
-          },
-          study_programs: {
-            include: {
-              study_program: {
-                select: {
-                  id: true,
-                  name: true,
-                  home_room_id: true
-                }
-              }
-            }
-          },
-          schedules: {
-            where: {
-              day: currentDay || undefined,
-              status: true
-            },
-            include: {
-              room: {
-                include: {
-                  building: true,
-                  floor: true
-                }
-              },
-              time_slot: true,
-              course: true
-            }
-          },
-          attendances: {
-            where: {
-              room_id: room_id,
-              check_in_at: {
-                gte: startOfDay
-              }
-            },
-            orderBy: {
-              check_in_at: 'desc'
-            },
-            take: 1
-          }
-        },
-        orderBy: {
-          user: {
-            name: 'asc'
-          }
-        }
-      })
-
-      const formattedLecturers = lecturers.map((lecturer) => {
-        const activeSchedule = lecturer.schedules.find((s) => {
-          const { start_time, end_time } = s.time_slot
-          return currentTime >= start_time && currentTime <= end_time
-        })
-
-        // Tentukan apakah dosen ini "milik" ruangan ini lewat jadwal atau home room
-        const isInRoomBySchedule = activeSchedule?.room_id === room_id
-
-        let roomType = 'HOME'
-        let courseName = null
-
-        if (isInRoomBySchedule) {
-          roomType = 'SCHEDULED'
-          courseName = activeSchedule.course.name
-        }
-
-        const latestAttendance = lecturer.attendances[0]
-        let presentSince = latestAttendance ? latestAttendance.check_in_at : null
-
-        if (!presentSince && ['AVAILABLE', 'BUSY'].includes(lecturer.status) && lecturer.is_manual) {
-          presentSince = lecturer.overridden_at
-        }
-
-        return {
-          id: lecturer.id,
-          name: lecturer.user?.name,
-          nip: lecturer.nip,
-          phone_number: lecturer.phone_number,
-          profile_picture: lecturer.user?.profile_picture || null,
-          status: lecturer.status, // AVAILABLE, BUSY, OFFLINE
-          room_type: roomType,
-          course: courseName,
-          present_since: presentSince
-        }
-      })
-
-      const statusPriority = {
-        AVAILABLE: 0,
-        BUSY: 1,
-        OFFLINE: 2
-      }
-
-      formattedLecturers.sort((a, b) => {
-        const statusDiff =
-          (statusPriority[a.status] ?? Number.MAX_SAFE_INTEGER) -
-          (statusPriority[b.status] ?? Number.MAX_SAFE_INTEGER)
-
-        if (statusDiff !== 0) return statusDiff
-        return (a.name || '').localeCompare(b.name || '', 'id', {
-          sensitivity: 'base'
-        })
-      })
+      const formattedLecturers = await getRoomLecturersData(room_id, search)
 
       return success(res, 'success', formattedLecturers)
     } catch (err) {
@@ -1032,4 +1038,7 @@ const lecturerController = {
   }
 }
 
-module.exports = lecturerController
+module.exports = {
+  ...lecturerController,
+  getRoomLecturersData
+}

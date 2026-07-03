@@ -57,6 +57,18 @@ const initSocket = (server) => {
       }
     })
 
+    socket.on('room-lecturers:get', async ({ room_id, q = '' } = {}) => {
+      if (!room_id) return
+
+      try {
+        const { getRoomLecturersData } = require('../modules/lecturers/lecturer.controller')
+        const lecturers = await getRoomLecturersData(room_id, q)
+        socket.emit('room-lecturers:data', { room_id, lecturers })
+      } catch (err) {
+        console.error('Error fetching room lecturers for socket:', err)
+      }
+    })
+
     socket.on('room-environment:unsubscribe', ({ room_id } = {}) => {
       if (!room_id) return
 
