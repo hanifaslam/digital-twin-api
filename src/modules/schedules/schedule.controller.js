@@ -5,6 +5,7 @@ const XLSX = require('xlsx')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
+const { getIO } = require('../../config/socket')
 
 const SCHEDULE_TEMPLATE_PATH = path.join(process.cwd(), 'format_schedule.xlsx')
 const DEFAULT_LECTURER_PASSWORD = 'Password123!'
@@ -1161,6 +1162,12 @@ const scheduleController = {
         return created
       })
 
+      try {
+        getIO().emit('schedule-updated')
+      } catch (e) {
+        console.error('Socket Emit Error:', e.message)
+      }
+
       return success(
         res,
         skipped.length > 0
@@ -1248,6 +1255,12 @@ const scheduleController = {
           status: status !== undefined ? status : true
         }))
       })
+
+      try {
+        getIO().emit('schedule-updated')
+      } catch (e) {
+        console.error('Socket Emit Error:', e.message)
+      }
 
       return success(res, 'success', null, 201)
     } catch (err) {
@@ -1528,6 +1541,12 @@ const scheduleController = {
         })
       })
 
+      try {
+        getIO().emit('schedule-updated')
+      } catch (e) {
+        console.error('Socket Emit Error:', e.message)
+      }
+
       return success(res, 'success', null)
     } catch (err) {
       return error(res, err.message, 500)
@@ -1554,6 +1573,12 @@ const scheduleController = {
           id: { in: scheduleGroup.map((item) => item.id) }
         }
       })
+
+      try {
+        getIO().emit('schedule-updated')
+      } catch (e) {
+        console.error('Socket Emit Error:', e.message)
+      }
 
       return success(res, 'success', null)
     } catch (err) {
@@ -1588,6 +1613,12 @@ const scheduleController = {
           status: !existingSchedule.status
         }
       })
+
+      try {
+        getIO().emit('schedule-updated')
+      } catch (e) {
+        console.error('Socket Emit Error:', e.message)
+      }
 
       return success(res, 'success', null)
     } catch (err) {
