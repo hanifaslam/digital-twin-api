@@ -472,7 +472,12 @@ const chatDashboard = async ({
     clarification: llmResponse.pendingClarification || null
   })
 
-  console.log(`Delay Chatbot: ${Date.now() - startChatbot} ms`)
+  const delayMs = Date.now() - startChatbot
+  console.log(`Delay Chatbot: ${delayMs} ms`)
+  try {
+    const { getIO } = require('../../config/socket')
+    getIO().emit('system-delay', { source: 'Chatbot', delay_ms: delayMs })
+  } catch (e) {}
 
   return {
     ok: true,

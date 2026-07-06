@@ -531,7 +531,12 @@ const faceRecognitionController = {
         })
       )
 
-      console.log(`Delay Face: ${Date.now() - startFace} ms`)
+      const delayMs = Date.now() - startFace
+      console.log(`Delay Face: ${delayMs} ms`)
+      try {
+        getIO().emit('system-delay', { source: 'Face', delay_ms: delayMs })
+      } catch (e) {}
+
       return success(res, 'Face verified', {
         lecturer_id: lecturerId,
         status: updated.status,

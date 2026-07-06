@@ -505,7 +505,11 @@ const initMQTT = () => {
     } catch (error) {
       console.error('[MQTT] Message Handler Error:', error.message)
     } finally {
-      console.log(`Delay IoT (${topic}): ${Date.now() - startIoT} ms`)
+      const delayMs = Date.now() - startIoT
+      console.log(`Delay IoT (${topic}): ${delayMs} ms`)
+      try {
+        getIO().emit('system-delay', { source: 'IoT', delay_ms: delayMs, details: topic })
+      } catch (e) {}
     }
   })
 
