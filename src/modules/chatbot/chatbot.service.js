@@ -165,15 +165,17 @@ const getProviderConfig = () => ({
   url: process.env.LLAMA_API_URL || '',
   apiKey: process.env.LLAMA_API_KEY || '',
   model: process.env.LLAMA_MODEL || '',
-  providerName: process.env.LLAMA_PROVIDER_NAME || DEFAULT_PROVIDER_NAME
+  providerName: process.env.LLAMA_PROVIDER_NAME || DEFAULT_PROVIDER_NAME,
+  geminiApiKey: process.env.GEMINI_API_KEY || '',
+  geminiModel: process.env.GEMINI_MODEL || 'gemini-1.5-flash'
 })
 
 const ensureProviderConfigured = () => {
   const config = getProviderConfig()
 
-  if (!config.url || !config.apiKey || !config.model) {
+  if ((!config.url || !config.apiKey || !config.model) && !config.geminiApiKey) {
     const err = new Error(
-      'LLM provider belum dikonfigurasi. Isi LLAMA_API_URL, LLAMA_API_KEY, dan LLAMA_MODEL.'
+      'LLM provider belum dikonfigurasi. Isi LLAMA_API_URL, LLAMA_API_KEY, dan LLAMA_MODEL, atau GEMINI_API_KEY.'
     )
     err.statusCode = 503
     throw err
@@ -192,6 +194,7 @@ const ensureLangChainDeps = () => {
 
   try {
     const { ChatOpenAI } = require('@langchain/openai')
+    const { ChatGoogleGenerativeAI } = require('@langchain/google-genai')
     const { DynamicStructuredTool } = require('@langchain/core/tools')
     const {
       AIMessage,
@@ -204,6 +207,7 @@ const ensureLangChainDeps = () => {
     langChainCache = {
       AIMessage,
       ChatOpenAI,
+      ChatGoogleGenerativeAI,
       DynamicStructuredTool,
       HumanMessage,
       SystemMessage,
@@ -221,19 +225,40 @@ const ensureLangChainDeps = () => {
   }
 }
 
-const createChatModel = () => {
-  const { ChatOpenAI } = ensureLangChainDeps()
+const createChatModels = () => {
+  const { ChatOpenAI, ChatGoogleGenerativeAI } = ensureLangChainDeps()
   const config = ensureProviderConfigured()
 
-  return new ChatOpenAI({
-    apiKey: config.apiKey,
-    configuration: {
-      baseURL: normalizeBaseUrl(config.url)
-    },
-    model: config.model,
-    temperature: 0.2,
-    maxTokens: 400
-  })
+  let primary = null
+  let fallback = null
+
+  if (config.apiKey && config.url && config.model) {
+    primary = new ChatOpenAI({
+      apiKey: config.apiKey,
+      configuration: {
+        baseURL: normalizeBaseUrl(config.url)
+      },
+      model: config.model,
+      temperature: 0.2,
+      maxTokens: 400
+    })
+  }
+
+  if (config.geminiApiKey) {
+    fallback = new ChatGoogleGenerativeAI({
+      apiKey: config.geminiApiKey,
+      modelName: config.geminiModel,
+      temperature: 0.2,
+      maxOutputTokens: 400
+    })
+  }
+
+  if (!primary && fallback) {
+    primary = fallback
+    fallback = null
+  }
+
+  return { primary, fallback }
 }
 
 const rejectPrompt = ({ sessionId, reason, code, statusCode = 400 }) => ({
@@ -274,7 +299,7 @@ const runToolCallingConversation = async ({
   const { HumanMessage, SystemMessage, ToolMessage, DynamicStructuredTool, z } =
     ensureLangChainDeps()
 
-  const model = createChatModel()
+  const { primary, fallback } = createChatModels()
   const { executors, tools } = buildTools({
     DynamicStructuredTool,
     z,
@@ -294,7 +319,12 @@ const runToolCallingConversation = async ({
       getEnergyAnomaliesSnapshot
     }
   })
-  const modelWithTools = model.bindTools(tools)
+  let modelWithTools = primary.bindTools(tools)
+  if (fallback) {
+    modelWithTools = modelWithTools.withFallbacks({
+      fallbacks: [fallback.bindTools(tools)]
+    })
+  }
 
   const messages = [
     new SystemMessage(getSystemPrompt()),
@@ -369,7 +399,7 @@ const runToolCallingConversation = async ({
     usedTools,
     contextScope,
     pendingClarification: nextClarification,
-    model: finalResponse.response_metadata?.model_name || getProviderConfig().model,
+    model: finalResponse.response_metadata?.model_name || finalResponse.response_metadata?.model || 'unknown',
     provider: getProviderConfig().providerName
   }
 }
