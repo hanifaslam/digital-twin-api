@@ -313,6 +313,7 @@ const faceRecognitionController = {
   },
 
   verify: async (req, res) => {
+    const startFace = Date.now()
     const file = req.file
     try {
       const user = req.user
@@ -530,6 +531,7 @@ const faceRecognitionController = {
         })
       )
 
+      console.log(`Delay Face: ${Date.now() - startFace} ms`)
       return success(res, 'Face verified', {
         lecturer_id: lecturerId,
         status: updated.status,

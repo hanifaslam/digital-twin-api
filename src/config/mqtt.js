@@ -179,6 +179,7 @@ const initMQTT = () => {
   })
 
   client.on('message', async (topic, message, packet) => {
+    const startIoT = Date.now()
     try {
       const rawMessage = message.toString()
       const payload = rawMessage.toLowerCase()
@@ -503,6 +504,8 @@ const initMQTT = () => {
       }
     } catch (error) {
       console.error('[MQTT] Message Handler Error:', error.message)
+    } finally {
+      console.log(`Delay IoT (${topic}): ${Date.now() - startIoT} ms`)
     }
   })
 

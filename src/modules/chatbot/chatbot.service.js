@@ -410,6 +410,7 @@ const chatDashboard = async ({
   room_id: roomId,
   session_id: sessionIdInput
 }) => {
+  const startChatbot = Date.now()
   const sessionId = buildSessionId(sessionIdInput)
   const sessionState = await getSessionState(sessionId)
   const memory = sessionState.memory || []
@@ -470,6 +471,8 @@ const chatDashboard = async ({
     memory: nextMemory,
     clarification: llmResponse.pendingClarification || null
   })
+
+  console.log(`Delay Chatbot: ${Date.now() - startChatbot} ms`)
 
   return {
     ok: true,
