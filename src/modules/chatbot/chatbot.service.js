@@ -232,8 +232,17 @@ const createChatModels = () => {
   let primary = null
   let fallback = null
 
+  if (config.geminiApiKey) {
+    primary = new ChatGoogleGenerativeAI({
+      apiKey: config.geminiApiKey,
+      modelName: config.geminiModel,
+      temperature: 0.2,
+      maxOutputTokens: 400
+    })
+  }
+
   if (config.apiKey && config.url && config.model) {
-    primary = new ChatOpenAI({
+    fallback = new ChatOpenAI({
       apiKey: config.apiKey,
       configuration: {
         baseURL: normalizeBaseUrl(config.url)
@@ -241,15 +250,6 @@ const createChatModels = () => {
       model: config.model,
       temperature: 0.2,
       maxTokens: 400
-    })
-  }
-
-  if (config.geminiApiKey) {
-    fallback = new ChatGoogleGenerativeAI({
-      apiKey: config.geminiApiKey,
-      modelName: config.geminiModel,
-      temperature: 0.2,
-      maxOutputTokens: 400
     })
   }
 
