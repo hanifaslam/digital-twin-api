@@ -280,7 +280,8 @@ const initMQTT = () => {
             return
           }
 
-          console.log(`[MQTT] 📥 Data received from ${device.name} | Topic: ${baseTopic}`)
+          const processMs = Date.now() - startIoT
+          console.log(`[MQTT] 📥 Data received from ${device.name} | Topic: ${baseTopic} | Process: ${processMs}ms`)
 
           await prisma.device.update({
             where: { id: device.id },
