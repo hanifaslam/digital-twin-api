@@ -280,6 +280,8 @@ const initMQTT = () => {
             return
           }
 
+          console.log(`[MQTT] 📥 Data received from ${device.name} | Topic: ${baseTopic}`)
+
           await prisma.device.update({
             where: { id: device.id },
             data: {
@@ -506,7 +508,7 @@ const initMQTT = () => {
       console.error('[MQTT] Message Handler Error:', error.message)
     } finally {
       const delayMs = Date.now() - startIoT
-      console.log(`Delay IoT (${topic}): ${delayMs} ms`)
+      // console.log(`Delay IoT (${topic}): ${delayMs} ms`) // LOG DIHAPUS SESUAI PERMINTAAN
       try {
         getIO().emit('system-delay', { source: 'IoT', delay_ms: delayMs, details: topic })
       } catch (e) {}
