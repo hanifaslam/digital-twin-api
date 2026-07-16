@@ -65,8 +65,13 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * c // in metres
 }
 
-
-const processAttendanceAndLocation = async (req, res, lecturerId, isManual = false, similarity = null) => {
+const processAttendanceAndLocation = async (
+  req,
+  res,
+  lecturerId,
+  isManual = false,
+  similarity = null
+) => {
   const now = new Date()
   const { currentDay, currentTime } = getJakartaScheduleContext(now)
   const { latitude: userLat, longitude: userLng } = req.body
@@ -236,7 +241,10 @@ const processAttendanceAndLocation = async (req, res, lecturerId, isManual = fal
       is_manual: updated.is_manual
     })
   } catch (e) {
-    console.error(`Socket Emit Error (${isManual ? 'Manual' : 'Face'} Verification):`, e.message)
+    console.error(
+      `Socket Emit Error (${isManual ? 'Manual' : 'Face'} Verification):`,
+      e.message
+    )
   }
 
   emitActivityLogUpdate(
@@ -254,7 +262,11 @@ const processAttendanceAndLocation = async (req, res, lecturerId, isManual = fal
     payload.similarity = parseFloat(similarity.toFixed(4))
   }
 
-  return success(res, isManual ? 'Manual verification successful' : 'Face verified', payload)
+  return success(
+    res,
+    isManual ? 'Manual verification successful' : 'Face verified',
+    payload
+  )
 }
 
 const faceRecognitionController = {
@@ -298,6 +310,8 @@ const faceRecognitionController = {
         update: { embedding, image_url: imageUrl }
       })
 
+      console.log(`[FACE-SERVICE] 👤 New face enrolled successfully.`)
+
       return success(
         res,
         'success',
@@ -326,6 +340,9 @@ const faceRecognitionController = {
 
       if (!lecturerId) return error(res, 'Lecturer profile not found', 403)
       if (!file) return error(res, 'Image is required', 400)
+
+      console.log(`[FACE-SERVICE] Verification requested | Processing image...`)
+
       const embedding = await getEmbedding(file.buffer, file.originalname)
       const faceData = await prisma.faceData.findUnique({
         where: { lecturer_id: lecturerId },
@@ -348,8 +365,15 @@ const faceRecognitionController = {
       const similarity = cosineSimilarity(embedding, storedEmbedding)
 
       if (similarity < SIMILARITY_THRESHOLD) {
+        console.log(
+          `[FACE-SERVICE] Face Mismatch! (Similarity: ${similarity.toFixed(4)}) | Access Denied`
+        )
         return error(res, 'Face not recognized', 401)
       }
+
+      console.log(
+        `[FACE-SERVICE] Face Match! (Similarity: ${similarity.toFixed(4)}) | Proceeding to location check...`
+      )
 
       // --- LOGIKA CEK JADWAL & LOKASI ---
       const now = new Date()
@@ -494,6 +518,9 @@ const faceRecognitionController = {
             room_id: matchedRoomId // <--- Simpan ke database
           }
         })
+        console.log(
+          `[FACE-SERVICE] Location Validated | Attendance recorded successfully.`
+        )
       } catch (e) {
         console.error('Attendance Logging Error:', e.message)
       }
@@ -532,7 +559,7 @@ const faceRecognitionController = {
       )
 
       const delayMs = Date.now() - startFace
-      console.log(`Delay Face: ${delayMs} ms`)
+      console.log(`[FACE-SERVICE] Verification completed in ${delayMs}ms`)
       try {
         getIO().emit('system-delay', { source: 'Face', delay_ms: delayMs })
       } catch (e) {}
@@ -543,8 +570,10 @@ const faceRecognitionController = {
         similarity: parseFloat(similarity.toFixed(4))
       })
     } catch (err) {
-      if (err.message.includes('Face not detected'))
+      if (err.message.includes('Face not detected')) {
+        console.log(`[FACE-SERVICE] Face not detected in uploaded image.`)
         return error(res, err.message, 400)
+      }
       console.error('Verify Error:', err)
       return error(res, err.message, 500)
     }
