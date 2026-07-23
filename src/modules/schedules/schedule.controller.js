@@ -1624,6 +1624,196 @@ const scheduleController = {
     } catch (err) {
       return error(res, err.message, 500)
     }
+  },
+
+  rescheduleTemporary: async (req, res) => {
+    try {
+      const { id } = req.params
+      const { override_date, new_room_id, new_time_slot_ids } = req.body || {}
+
+      if (!override_date) {
+        return error(res, 'override_date is required', 400)
+      }
+      if (!new_room_id) {
+        return error(res, 'new_room_id is required', 400)
+      }
+      const timeSlotIds = normalizeTimeSlotIds(new_time_slot_ids)
+      if (timeSlotIds.length === 0) {
+        return error(res, 'Time slots are required', 400)
+      }
+
+      let year, month, day
+      if (typeof override_date === 'string' && override_date.includes('-')) {
+        const parts = override_date.split('T')[0].split('-')
+        year = parseInt(parts[0], 10)
+        month = parseInt(parts[1], 10) - 1
+        day = parseInt(parts[2], 10)
+      } else {
+        const tempDate = new Date(override_date)
+        year = tempDate.getFullYear()
+        month = tempDate.getMonth()
+        day = tempDate.getDate()
+      }
+      
+      const overrideDateObj = new Date(Date.UTC(year, month, day, 0, 0, 0))
+      
+      const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+      const dayName = daysOfWeek[overrideDateObj.getUTCDay()]
+      const mappedDay = DAY_NAME_MAP[dayName]
+
+      const existingSchedule = await prisma.schedule.findUnique({
+        where: { id }
+      })
+
+      if (!existingSchedule) {
+        return error(res, 'Schedule not found', 404)
+      }
+
+      const roleCode = (req.user?.role?.code || req.user?.role?.name || '').toUpperCase()
+      if (!['SA', 'SUPER_ADMIN', 'ADMIN'].includes(roleCode)) {
+        if (req.user?.lecturer?.id && existingSchedule.lecturer_id !== req.user.lecturer.id) {
+          return error(res, 'You are not authorized to modify another lecturer\'s schedule', 403)
+        }
+      }
+
+      const scheduleGroup = await findScheduleGroup(prisma, existingSchedule, {
+        select: { id: true, lecturer_id: true, time_slot: true }
+      })
+      
+      scheduleGroup.sort((a, b) => {
+        const aStart = a.time_slot?.start_time || '00:00'
+        const bStart = b.time_slot?.start_time || '00:00'
+        return aStart.localeCompare(bStart)
+      })
+
+      const startIndex = scheduleGroup.findIndex(s => s.id === existingSchedule.id)
+      
+      if (startIndex === -1) {
+        return error(res, 'Schedule not found in group', 404)
+      }
+
+      if (timeSlotIds.length > scheduleGroup.length) {
+        return error(res, 'Cannot increase duration beyond scheduled blocks.', 400)
+      }
+
+      const targetSchedules = scheduleGroup.slice(startIndex, scheduleGroup.length)
+      const originalScheduleIds = targetSchedules.map((item) => item.id)
+
+      for (const timeSlotId of timeSlotIds) {
+        const overrideConflictRoom = await prisma.scheduleOverride.findFirst({
+          where: {
+            override_date: overrideDateObj,
+            new_room_id: new_room_id,
+            new_time_slot_id: timeSlotId,
+            original_schedule_id: { notIn: originalScheduleIds }
+          }
+        })
+        if (overrideConflictRoom) return error(res, `Room is already booked on this date by another temporary schedule`, 400)
+
+        const overrideConflictLecturer = await prisma.scheduleOverride.findFirst({
+          where: {
+            override_date: overrideDateObj,
+            original_schedule: { lecturer_id: existingSchedule.lecturer_id },
+            new_time_slot_id: timeSlotId,
+            original_schedule_id: { notIn: originalScheduleIds }
+          }
+        })
+        if (overrideConflictLecturer) return error(res, `Lecturer already has a temporary schedule at this time`, 400)
+
+        const masterConflictRoom = await prisma.schedule.findFirst({
+          where: {
+            room_id: new_room_id,
+            time_slot_id: timeSlotId,
+            day: mappedDay,
+            id: { notIn: originalScheduleIds },
+            overrides: {
+              none: { override_date: overrideDateObj }
+            }
+          }
+        })
+        if (masterConflictRoom) return error(res, `Room is already booked at this time by a regular schedule`, 400)
+
+        const masterConflictLecturer = await prisma.schedule.findFirst({
+          where: {
+            lecturer_id: existingSchedule.lecturer_id,
+            time_slot_id: timeSlotId,
+            day: mappedDay,
+            id: { notIn: originalScheduleIds },
+            overrides: {
+              none: { override_date: overrideDateObj }
+            }
+          }
+        })
+        if (masterConflictLecturer) return error(res, `Lecturer already has a regular schedule at this time`, 400)
+      }
+
+      const { getJakartaDateParts } = require('../../utils/date')
+      
+      const jsDate = new Date(override_date)
+      const targetDayOfWeek = jsDate.getDay() || 7
+      
+      const startOfWeekJs = new Date(jsDate)
+      startOfWeekJs.setDate(jsDate.getDate() - targetDayOfWeek + 1)
+      const startOfWeekParts = getJakartaDateParts(startOfWeekJs)
+      const startOfWeek = new Date(Date.UTC(startOfWeekParts.year, startOfWeekParts.month - 1, startOfWeekParts.day, 0, 0, 0))
+    
+      const endOfWeekJs = new Date(startOfWeekJs)
+      endOfWeekJs.setDate(startOfWeekJs.getDate() + 6)
+      const endOfWeekParts = getJakartaDateParts(endOfWeekJs)
+      const endOfWeek = new Date(Date.UTC(endOfWeekParts.year, endOfWeekParts.month - 1, endOfWeekParts.day, 23, 59, 59, 999))
+
+      // Delete existing overrides for this schedule group in the same week
+      await prisma.scheduleOverride.deleteMany({
+        where: {
+          original_schedule_id: { in: originalScheduleIds },
+          override_date: {
+            gte: startOfWeek,
+            lte: endOfWeek
+          }
+        }
+      })
+
+      const overrideData = targetSchedules.map((schedule, index) => {
+        if (index < timeSlotIds.length) {
+          return {
+            original_schedule_id: schedule.id,
+            override_date: overrideDateObj,
+            new_room_id: new_room_id,
+            new_time_slot_id: timeSlotIds[index],
+            is_cancelled: false
+          }
+        } else {
+          return {
+            original_schedule_id: schedule.id,
+            override_date: overrideDateObj,
+            new_room_id: null,
+            new_time_slot_id: null,
+            is_cancelled: true
+          }
+        }
+      })
+
+      await prisma.scheduleOverride.deleteMany({
+        where: {
+          original_schedule_id: { in: originalScheduleIds },
+          override_date: overrideDateObj
+        }
+      })
+
+      await prisma.scheduleOverride.createMany({
+        data: overrideData
+      })
+
+      try {
+        getIO().emit('schedule-updated')
+      } catch (e) {
+        console.error('Socket Emit Error:', e.message)
+      }
+
+      return success(res, 'Temporary reschedule successful', null, 201)
+    } catch (err) {
+      return error(res, err.message, 500)
+    }
   }
 }
 

@@ -26,6 +26,7 @@ const dashboardController = require('../modules/dashboard/dashboard.controller')
 const chatbotRoutes = require('../modules/chatbot/chatbot.routes')
 const academicPeriodRoutes = require('../modules/academic-periods/academic-period.routes')
 const historyRoutes = require('../modules/history/history.routes')
+const settingsRoutes = require('../modules/settings/settings.routes')
 
 router.use('/auth', authRoutes)
 router.get('/dashboard/buildings', buildingController.getAllBuildings)
@@ -62,5 +63,6 @@ router.use('/sensors', sensorRoutes)
 router.use('/academic-periods', authMiddleware, academicPeriodRoutes)
 router.use('/dashboard', authMiddleware, dashboardRoutes)
 router.use('/history', authMiddleware, historyRoutes)
+router.use('/settings', authMiddleware, settingsRoutes)
 
 module.exports = router

@@ -7,6 +7,7 @@ const {
 const { buildEnergyMonitoringSummary } = require('../dashboard/dashboard.controller')
 const { buildClarificationState } = require('./chatbot.clarification')
 const { resolveScheduleDay } = require('./chatbot.schedule')
+const { getEffectiveSchedulesForDate } = require('../../common/services/schedule.service')
 
 const ROOM_LOG_SELECT = {
   id: true,
@@ -546,36 +547,25 @@ const getRoomSchedulesForDay = async (roomId, dateInput) => {
     }
   }
 
-  const schedules = await prisma.schedule.findMany({
-    where: {
-      room_id: roomId,
-      day: targetDay,
-      status: true
-    },
-    include: {
-      course: {
-        select: { name: true, code: true }
-      },
-      class: {
-        select: { id: true, name: true }
-      },
-      time_slot: {
-        select: { start_time: true, end_time: true }
-      },
-      lecturer: {
-        include: {
-          user: {
-            select: { name: true }
-          }
-        }
-      }
-    },
-    orderBy: {
-      time_slot: {
-        start_time: 'asc'
-      }
-    }
-  })
+  let schedules = []
+  if (resolvedDay.target_date) {
+    const allSchedules = await getEffectiveSchedulesForDate(resolvedDay.target_date, {}, {
+      course: { select: { name: true, code: true } },
+      class: { select: { id: true, name: true } },
+      time_slot: { select: { start_time: true, end_time: true } },
+      lecturer: { include: { user: { select: { name: true } } } }
+    })
+    schedules = allSchedules.filter(s => s.room_id === roomId).sort((a, b) => a.time_slot.start_time.localeCompare(b.time_slot.start_time))
+  } else {
+    // Fallback if target_date is not available (shouldn't happen with updated resolveScheduleDay)
+    const allSchedules = await getEffectiveSchedulesForDate(new Date(), {}, {
+      course: { select: { name: true, code: true } },
+      class: { select: { id: true, name: true } },
+      time_slot: { select: { start_time: true, end_time: true } },
+      lecturer: { include: { user: { select: { name: true } } } }
+    })
+    schedules = allSchedules.filter(s => s.room_id === roomId && s.day === targetDay).sort((a, b) => a.time_slot.start_time.localeCompare(b.time_slot.start_time))
+  }
 
   return {
     ...resolvedDay,
@@ -814,17 +804,11 @@ const getAvailableRoomsSnapshot = async (buildingId) => {
     orderBy: { name: 'asc' }
   })
 
-  const activeSchedules = await prisma.schedule.findMany({
-    where: {
-      room_id: { in: rooms.map((r) => r.id) },
-      day: currentDay,
-      status: true,
-      time_slot: {
-        start_time: { lte: currentTime },
-        end_time: { gte: currentTime }
-      }
-    },
-    select: { room_id: true }
+  const allActiveSchedules = await getEffectiveSchedulesForDate(new Date(), {}, { time_slot: true })
+  
+  const activeSchedules = allActiveSchedules.filter(s => {
+    if (!rooms.find(r => r.id === s.room_id)) return false;
+    return s.time_slot && s.time_slot.start_time <= currentTime && s.time_slot.end_time >= currentTime;
   })
 
   const occupiedRoomIds = new Set(activeSchedules.map((s) => s.room_id))
@@ -892,18 +876,11 @@ const getEnergyAnomaliesSnapshot = async (buildingId) => {
   }
 
   const activeSchedules = currentDay
-    ? await prisma.schedule.findMany({
-        where: {
-          room_id: { in: highPowerRooms.map((r) => r.room_id) },
-          day: currentDay,
-          status: true,
-          time_slot: {
-            start_time: { lte: currentTime },
-            end_time: { gte: currentTime }
-          }
-        },
-        select: { room_id: true }
-      })
+    ? (await getEffectiveSchedulesForDate(new Date(), {}, { time_slot: true }))
+        .filter(s => {
+          if (!highPowerRooms.find(r => r.room_id === s.room_id)) return false;
+          return s.time_slot && s.time_slot.start_time <= currentTime && s.time_slot.end_time >= currentTime;
+        })
     : []
 
   const occupiedRoomIds = new Set(activeSchedules.map((s) => s.room_id))

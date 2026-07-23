@@ -50,7 +50,8 @@ const resolveScheduleDay = (dateInput) => {
         ? DAY_LABEL_MAP[currentContext.currentDay]
         : 'Hari ini',
       is_today: true,
-      current_time: currentContext.currentTime
+      current_time: currentContext.currentTime,
+      target_date: now
     }
   }
 
@@ -63,7 +64,8 @@ const resolveScheduleDay = (dateInput) => {
         ? DAY_LABEL_MAP[tomorrowContext.currentDay]
         : 'Besok',
       is_today: false,
-      current_time: null
+      current_time: null,
+      target_date: shiftJakartaDate(now, 1)
     }
   }
 
@@ -77,7 +79,16 @@ const resolveScheduleDay = (dateInput) => {
       current_time:
         explicitDay === currentContext.currentDay
           ? currentContext.currentTime
-          : null
+          : null,
+      target_date: (function() {
+        // Calculate the next occurrence of explicitDay
+        const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+        const targetDayIndex = dayNames.indexOf(explicitDay)
+        const currentDayIndex = now.getDay()
+        let offset = targetDayIndex - currentDayIndex
+        if (offset < 0) offset += 7 // If it's a past day, get the NEXT occurrence
+        return shiftJakartaDate(now, offset)
+      })()
     }
   }
 

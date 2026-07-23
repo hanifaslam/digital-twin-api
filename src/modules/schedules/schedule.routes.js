@@ -26,6 +26,7 @@ router.get('/', scheduleController.getAll)
 router.get('/:id', scheduleController.getById)
 router.patch('/:id', validate(updateScheduleSchema), scheduleController.update)
 router.patch('/:id/status', scheduleController.toggleStatus)
+router.post('/:id/reschedule-temporary', scheduleController.rescheduleTemporary)
 router.delete('/:id', scheduleController.delete)
 
 module.exports = router

@@ -4,6 +4,7 @@ const { getIO } = require('../../config/socket')
 const { getJakartaScheduleContext } = require('../../utils/date')
 const { addActivityLog } = require('../activity-log')
 const { emitActivityLogUpdate } = require('../../config/socket')
+const { getEffectiveSchedulesForDate } = require('../services/schedule.service')
 
 const getJakartaDayStart = () => {
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -28,15 +29,17 @@ const syncLecturerAvailability = async () => {
 
     // Ambil semua dosen agar status dashboard selalu tersinkron,
     // tidak bergantung pada apakah dosen sudah registrasi face data.
+    const allSchedules = await getEffectiveSchedulesForDate(new Date(), {}, { time_slot: true })
+    
+    // Group schedules by lecturer for quick access
+    const schedulesByLecturerId = {}
+    for (const s of allSchedules) {
+      if (!schedulesByLecturerId[s.lecturer_id]) schedulesByLecturerId[s.lecturer_id] = []
+      schedulesByLecturerId[s.lecturer_id].push(s)
+    }
+
     const lecturers = await prisma.lecturer.findMany({
       include: {
-        schedules: {
-          where: {
-            day: currentDay || undefined,
-            status: true
-          },
-          include: { time_slot: true }
-        },
         attendances: {
           where: {
             check_in_at: {
@@ -49,8 +52,9 @@ const syncLecturerAvailability = async () => {
     })
 
     for (const lecturer of lecturers) {
+      const lecturerSchedules = schedulesByLecturerId[lecturer.id] || []
       // 1. Hitung Status Otomatis berdasarkan jadwal aktif + attendance hari ini
-      const activeSchedule = lecturer.schedules.find((s) => {
+      const activeSchedule = lecturerSchedules.find((s) => {
         const { start_time, end_time } = s.time_slot
         return currentTime >= start_time && currentTime <= end_time
       })

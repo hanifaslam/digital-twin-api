@@ -1,6 +1,7 @@
 const path = require('path')
 const XLSX = require('xlsx')
 const prisma = require('../../config/prisma')
+const { getEffectiveSchedulesForDate } = require('../../common/services/schedule.service')
 const { success, error } = require('../../config/response')
 const { buildPagination } = require('../../utils/pagination')
 const { getJakartaScheduleContext } = require('../../utils/date')
@@ -155,36 +156,13 @@ const getRoomSchedulesData = async (room_id) => {
     return []
   }
 
-  const schedules = await prisma.schedule.findMany({
-    where: {
-      room_id: room_id,
-      day: currentDay,
-      status: true
-    },
-    include: {
-      course: {
-        select: { name: true, code: true }
-      },
-      class: {
-        select: { id: true, name: true }
-      },
-      time_slot: {
-        select: { start_time: true, end_time: true }
-      },
-      lecturer: {
-        include: {
-          user: {
-            select: { name: true }
-          }
-        }
-      }
-    },
-    orderBy: {
-      time_slot: {
-        start_time: 'asc'
-      }
-    }
+  const allSchedules = await getEffectiveSchedulesForDate(new Date(), {}, {
+    course: { select: { name: true, code: true } },
+    class: { select: { id: true, name: true } },
+    time_slot: { select: { start_time: true, end_time: true } },
+    lecturer: { include: { user: { select: { name: true } } } }
   })
+  const schedules = allSchedules.filter(s => s.room_id === room_id).sort((a, b) => a.time_slot.start_time.localeCompare(b.time_slot.start_time))
 
   const formattedSchedules = schedules.map((s) => ({
     id: s.id,

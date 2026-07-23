@@ -1,4 +1,7 @@
 const { Day } = require('@prisma/client')
+const {
+  getEffectiveSchedulesForDate
+} = require('../../common/services/schedule.service')
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
 const { getActivityLogs } = require('../../common/activity-log')
@@ -151,69 +154,83 @@ const enumerateScheduleOccurrences = (schedule, startDate, endDate) => {
   if (!targetWeekday) return []
 
   const occurrences = []
+  
+  // Rewind cursor to the Monday of the week of startDate
   const cursor = new Date(startDate)
+  const cursorDayOfWeek = cursor.getDay() || 7
+  cursor.setDate(cursor.getDate() - cursorDayOfWeek + 1)
+  cursor.setUTCHours(0, 0, 0, 0)
 
   while (cursor <= endDate) {
     const cursorParts = getJakartaParts(cursor)
-    const cursorStart = toUtcFromJakarta(
-      cursorParts.year,
-      cursorParts.month,
-      cursorParts.day,
-      0,
-      0,
-      0
-    )
-
-    if (cursorStart < startDate) {
-      cursor.setUTCDate(cursor.getUTCDate() + 1)
-      continue
-    }
-
+    
+    // We only process ONCE per week, on Monday
     const DAY_NAME_TO_WEEKDAY = {
       Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6
     }
     const weekday = DAY_NAME_TO_WEEKDAY[cursorParts.weekday]
-    if (weekday === targetWeekday) {
-      const [startHour, startMinute] = (
-        schedule.time_slot?.start_time || '00:00'
-      )
-        .split(':')
-        .map(Number)
-      const [endHour, endMinute] = (schedule.time_slot?.end_time || '00:00')
-        .split(':')
-        .map(Number)
+    
+    if (weekday === 1) { // Monday
+      const startOfWeek = new Date(Date.UTC(cursorParts.year, cursorParts.month - 1, cursorParts.day, 0, 0, 0))
+      
+      const endOfWeekJs = new Date(startOfWeek)
+      endOfWeekJs.setDate(startOfWeek.getDate() + 6)
+      const endOfWeekParts = getJakartaParts(endOfWeekJs)
+      const endOfWeek = new Date(Date.UTC(endOfWeekParts.year, endOfWeekParts.month - 1, endOfWeekParts.day, 23, 59, 59, 999))
 
-      const startAt = toUtcFromJakarta(
-        cursorParts.year,
-        cursorParts.month,
-        cursorParts.day,
-        startHour,
-        startMinute,
-        0
-      )
-      const endAt = toUtcFromJakarta(
-        cursorParts.year,
-        cursorParts.month,
-        cursorParts.day,
-        endHour,
-        endMinute,
-        0
-      )
+      let activeOverride = null
+      if (schedule.overrides && schedule.overrides.length > 0) {
+        activeOverride = schedule.overrides.find(ov => {
+          const ovDate = new Date(ov.override_date)
+          return ovDate >= startOfWeek && ovDate <= endOfWeek
+        })
+      }
 
-      occurrences.push({
-        schedule_id: schedule.id,
-        room_id: schedule.room_id,
-        building_id: schedule.room?.building_id,
-        start_at: startAt,
-        end_at: endAt,
-        duration_hours: getScheduleDurationHours(schedule)
-      })
+      if (activeOverride) {
+        if (!activeOverride.is_cancelled) {
+          const ovParts = getJakartaParts(activeOverride.override_date)
+          const [startHour, startMinute] = (activeOverride.new_time_slot?.start_time || '00:00').split(':').map(Number)
+          const [endHour, endMinute] = (activeOverride.new_time_slot?.end_time || '00:00').split(':').map(Number)
+
+          const startAt = toUtcFromJakarta(ovParts.year, ovParts.month, ovParts.day, startHour, startMinute, 0)
+          const endAt = toUtcFromJakarta(ovParts.year, ovParts.month, ovParts.day, endHour, endMinute, 0)
+
+          occurrences.push({
+            schedule_id: schedule.id,
+            room_id: activeOverride.new_room_id,
+            building_id: activeOverride.new_room?.building_id || schedule.room?.building_id,
+            start_at: startAt,
+            end_at: endAt,
+            duration_hours: getScheduleDurationHours({ ...schedule, time_slot: activeOverride.new_time_slot })
+          })
+        }
+      } else {
+        const daysToAdd = targetWeekday - 1
+        const targetDayJs = new Date(startOfWeek)
+        targetDayJs.setDate(startOfWeek.getDate() + daysToAdd)
+        const targetDayParts = getJakartaParts(targetDayJs)
+
+        const [startHour, startMinute] = (schedule.time_slot?.start_time || '00:00').split(':').map(Number)
+        const [endHour, endMinute] = (schedule.time_slot?.end_time || '00:00').split(':').map(Number)
+
+        const startAt = toUtcFromJakarta(targetDayParts.year, targetDayParts.month, targetDayParts.day, startHour, startMinute, 0)
+        const endAt = toUtcFromJakarta(targetDayParts.year, targetDayParts.month, targetDayParts.day, endHour, endMinute, 0)
+
+        occurrences.push({
+          schedule_id: schedule.id,
+          room_id: schedule.room_id,
+          building_id: schedule.room?.building_id,
+          start_at: startAt,
+          end_at: endAt,
+          duration_hours: getScheduleDurationHours(schedule)
+        })
+      }
     }
 
     cursor.setUTCDate(cursor.getUTCDate() + 1)
   }
 
-  return occurrences
+  return occurrences.filter(occ => occ.start_at >= startDate && occ.end_at <= endDate)
 }
 
 const findAttendanceOccurrenceIndex = (
@@ -677,13 +694,10 @@ const dashboardController = {
       const [
         totalLecturers,
         lecturerNewThisMonth,
-        activeRoomsGlobal,
         onlineDevicesGlobal,
         buildingsMonitored,
         totalDevices,
-        offlineDevices,
-        classesActive,
-        activeRoomsScoped
+        offlineDevices
       ] = await Promise.all([
         prisma.lecturer.count(),
         prisma.lecturer.count({
@@ -693,18 +707,6 @@ const dashboardController = {
               lte: currentMonthRange.end
             }
           }
-        }),
-        prisma.schedule.findMany({
-          where: {
-            status: true,
-            day: currentDay || undefined,
-            time_slot: {
-              start_time: { lte: currentTime },
-              end_time: { gte: currentTime }
-            }
-          },
-          distinct: ['room_id'],
-          select: { room_id: true }
         }),
         prisma.device.count({
           where: {
@@ -727,30 +729,28 @@ const dashboardController = {
             status: true,
             is_online: false
           })
-        }),
-        prisma.schedule.count({
-          where: buildScopedWhere(buildingIds, {
-            status: true,
-            day: currentDay || undefined,
-            time_slot: {
-              start_time: { lte: currentTime },
-              end_time: { gte: currentTime }
-            }
-          })
-        }),
-        prisma.schedule.findMany({
-          where: buildScopedWhere(buildingIds, {
-            status: true,
-            day: currentDay || undefined,
-            time_slot: {
-              start_time: { lte: currentTime },
-              end_time: { gte: currentTime }
-            }
-          }),
-          distinct: ['room_id'],
-          select: { room_id: true }
         })
       ])
+
+      const effectiveSchedulesToday = await getEffectiveSchedulesForDate(new Date(), {}, {
+        room: true
+      })
+      const activeSchedulesGlobal = effectiveSchedulesToday.filter(s => {
+        return s.time_slot?.start_time <= currentTime && s.time_slot?.end_time >= currentTime
+      })
+      
+      const activeRoomsGlobalArray = Array.from(new Set(activeSchedulesGlobal.map(s => s.room_id).filter(Boolean)))
+      
+      const activeSchedulesScoped = activeSchedulesGlobal.filter(s => {
+        if (!Array.isArray(buildingIds)) return true
+        return s.room?.building_id && buildingIds.includes(s.room.building_id)
+      })
+      
+      const activeRoomsScopedArray = Array.from(new Set(activeSchedulesScoped.map(s => s.room_id).filter(Boolean)))
+      
+      const activeRoomsGlobal = activeRoomsGlobalArray.length
+      const classesActive = activeSchedulesScoped.length
+      const activeRoomsScoped = activeRoomsScopedArray.length
 
       const deviceHealth =
         totalDevices === 0
@@ -814,17 +814,7 @@ const dashboardController = {
           ).getTime()
 
         const [scheduledLecturers, attendedLecturers] = await Promise.all([
-          prisma.schedule.findMany({
-            where: { day: dayValue, status: true },
-            select: {
-              lecturer_id: true,
-              time_slot: {
-                select: {
-                  end_time: true
-                }
-              }
-            }
-          }),
+          getEffectiveSchedulesForDate(currentDateUtc),
           prisma.attendance.findMany({
             where: {
               check_in_at: {
@@ -885,48 +875,33 @@ const dashboardController = {
         return success(res, 'success', [])
       }
 
-      const schedules = await prisma.schedule.findMany({
-        where: buildScopedWhere(buildingIds, {
-          status: true,
-          day: currentDay,
-          time_slot: {
-            start_time: { lte: currentTime },
-            end_time: { gte: currentTime }
-          }
-        }),
-        include: {
-          course: {
-            select: { name: true }
-          },
-          class: {
-            select: { name: true }
-          },
-          room: {
-            select: {
-              id: true,
-              name: true,
-              building: {
-                select: { name: true }
-              }
-            }
-          },
-          lecturer: {
-            select: {
-              id: true,
-              user: {
-                select: { name: true }
-              }
-            }
-          },
-          time_slot: {
-            select: {
-              start_time: true,
-              end_time: true
-            }
+      const allSchedulesToday = await getEffectiveSchedulesForDate(new Date(), buildScopedWhere(buildingIds, {}), {
+        course: { select: { name: true } },
+        class: { select: { name: true } },
+        room: {
+          select: {
+            id: true,
+            name: true,
+            building: { select: { name: true } }
           }
         },
-        orderBy: [{ time_slot: { start_time: 'asc' } }, { created_at: 'asc' }]
+        lecturer: {
+          select: {
+            id: true,
+            user: { select: { name: true } }
+          }
+        },
+        time_slot: { select: { start_time: true, end_time: true } }
       })
+
+      const schedules = allSchedulesToday
+        .filter(s => s.time_slot?.start_time <= currentTime && s.time_slot?.end_time >= currentTime)
+        .sort((a, b) => {
+          if (a.time_slot?.start_time !== b.time_slot?.start_time) {
+            return (a.time_slot?.start_time || '').localeCompare(b.time_slot?.start_time || '')
+          }
+          return a.created_at - b.created_at
+        })
 
       const lecturerIds = [
         ...new Set(schedules.map((item) => item.lecturer_id))
@@ -994,33 +969,21 @@ const dashboardController = {
         return success(res, 'success', [])
       }
 
-      const schedules = await prisma.schedule.findMany({
-        where: buildScopedWhere(buildingIds, {
-          status: true,
-          day: currentDay,
-          time_slot: {
-            start_time: { gt: currentTime }
-          }
-        }),
-        include: {
-          course: {
-            select: { name: true }
-          },
-          class: {
-            select: { name: true }
-          },
-          room: {
-            select: { id: true, name: true }
-          },
-          time_slot: {
-            select: {
-              start_time: true,
-              end_time: true
-            }
-          }
-        },
-        orderBy: [{ time_slot: { start_time: 'asc' } }, { created_at: 'asc' }]
+      const allSchedulesToday = await getEffectiveSchedulesForDate(new Date(), buildScopedWhere(buildingIds, {}), {
+        course: { select: { name: true } },
+        class: { select: { name: true } },
+        room: { select: { id: true, name: true } },
+        time_slot: { select: { start_time: true, end_time: true } }
       })
+
+      const schedules = allSchedulesToday
+        .filter(s => s.time_slot?.start_time > currentTime)
+        .sort((a, b) => {
+          if (a.time_slot?.start_time !== b.time_slot?.start_time) {
+            return (a.time_slot?.start_time || '').localeCompare(b.time_slot?.start_time || '')
+          }
+          return a.created_at - b.created_at
+        })
 
       const items = schedules.map((item) => ({
         schedule_id: item.id,
@@ -1134,13 +1097,18 @@ const dashboardController = {
     try {
       const roleIdentity = getRoleIdentity(req.user?.role)
       const { currentDay } = getCurrentContext()
-      if (!currentDay) {
-        return success(res, 'success', [])
-      }
+      const queryDay = req.query.day ? String(req.query.day).toUpperCase() : null
+      const filterDay = queryDay || currentDay
 
       let scheduleWhere = {
-        day: currentDay,
         status: true
+      }
+
+      if (filterDay !== 'ALL') {
+        if (!filterDay) {
+          return success(res, 'success', [])
+        }
+        scheduleWhere.day = filterDay
       }
 
       if (['SA', 'SUPER_ADMIN'].includes(roleIdentity)) {
@@ -1159,37 +1127,59 @@ const dashboardController = {
         return success(res, 'success', [])
       }
 
-      const schedules = await prisma.schedule.findMany({
-        where: scheduleWhere,
-        include: {
-          course: {
-            select: { name: true }
-          },
-          class: {
-            select: { name: true }
-          },
-          room: {
-            select: {
-              id: true,
-              name: true,
-              building: {
-                select: { id: true, name: true }
-              }
-            }
-          },
-          lecturer: {
-            select: {
-              id: true,
-              user: {
-                select: { name: true }
-              }
-            }
-          },
-          time_slot: {
-            select: { start_time: true, end_time: true }
+      let schedules = []
+      
+      const { day, ...baseWhere } = scheduleWhere
+      const includeConfig = {
+        course: { select: { name: true } },
+        class: { select: { name: true } },
+        room: {
+          select: {
+            id: true,
+            name: true,
+            building: { select: { id: true, name: true } }
           }
         },
-        orderBy: [{ time_slot: { start_time: 'asc' } }, { created_at: 'asc' }]
+        lecturer: {
+          select: {
+            id: true,
+            user: { select: { name: true } }
+          }
+        },
+        time_slot: { select: { start_time: true, end_time: true } }
+      }
+
+      const dayMapInv = { MONDAY: 1, TUESDAY: 2, WEDNESDAY: 3, THURSDAY: 4, FRIDAY: 5, SATURDAY: 6, SUNDAY: 7 }
+      const today = new Date()
+      const currentDayOfWeek = today.getDay() || 7
+
+      if (filterDay === 'ALL') {
+        const daysToFetch = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY']
+        for (const targetDayStr of daysToFetch) {
+           const targetDayOfWeek = dayMapInv[targetDayStr]
+           const targetDate = new Date(today)
+           targetDate.setDate(today.getDate() - currentDayOfWeek + targetDayOfWeek)
+           
+           const dailySchedules = await getEffectiveSchedulesForDate(targetDate, baseWhere, includeConfig)
+           schedules.push(...dailySchedules)
+        }
+      } else {
+        const targetDayOfWeek = dayMapInv[filterDay] || currentDayOfWeek
+        const targetDate = new Date(today)
+        targetDate.setDate(today.getDate() - currentDayOfWeek + targetDayOfWeek)
+        
+        schedules = await getEffectiveSchedulesForDate(targetDate, baseWhere, includeConfig)
+      }
+
+      schedules.sort((a, b) => {
+        const days = ['MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY', 'SUNDAY']
+        const dayDiff = days.indexOf(a.day) - days.indexOf(b.day)
+        if (dayDiff !== 0) return dayDiff
+
+        if (a.time_slot?.start_time !== b.time_slot?.start_time) {
+          return (a.time_slot?.start_time || '').localeCompare(b.time_slot?.start_time || '')
+        }
+        return a.created_at - b.created_at
       })
 
       const { parts } = getCurrentContext()
@@ -1310,6 +1300,18 @@ const dashboardController = {
             },
             room: {
               select: { building_id: true }
+            },
+            overrides: {
+              where: {
+                override_date: {
+                  gte: startOfSemester,
+                  lte: endOfToday
+                }
+              },
+              include: {
+                new_time_slot: true,
+                new_room: true
+              }
             }
           }
         }),

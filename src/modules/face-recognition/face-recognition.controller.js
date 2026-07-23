@@ -1,5 +1,8 @@
 const prisma = require('../../config/prisma')
 const { success, error } = require('../../config/response')
+const {
+  getEffectiveSchedulesForDate
+} = require('../../common/services/schedule.service')
 const path = require('path')
 const s3 = require('../../config/s3')
 const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3')
@@ -65,6 +68,23 @@ const calculateDistance = (lat1, lon1, lat2, lon2) => {
   return R * c // in metres
 }
 
+const getEffectiveSchedulesForLecturerToday = async (lecturerId) => {
+  const now = new Date()
+  const { currentTime } = getJakartaScheduleContext(now)
+  
+  const allSchedulesToday = await getEffectiveSchedulesForDate(now, { lecturer_id: lecturerId }, {
+    room: { include: { building: true } },
+    time_slot: true
+  })
+  
+  const schedulesToday = allSchedulesToday.sort((a, b) => (a.time_slot?.start_time || '').localeCompare(b.time_slot?.start_time || ''))
+  
+  const activeSchedule = schedulesToday.find(s => s.time_slot?.start_time <= currentTime && s.time_slot?.end_time >= currentTime) || null
+  const upcomingSchedule = schedulesToday.find(s => s.time_slot?.start_time > currentTime) || null
+  
+  return { activeSchedule, upcomingSchedule, schedulesToday }
+}
+
 const processAttendanceAndLocation = async (
   req,
   res,
@@ -76,35 +96,7 @@ const processAttendanceAndLocation = async (
   const { currentDay, currentTime } = getJakartaScheduleContext(now)
   const { latitude: userLat, longitude: userLng } = req.body
 
-  // 1. Cari Jadwal Aktif (Sedang Berlangsung)
-  const activeSchedule = currentDay
-    ? await prisma.schedule.findFirst({
-        where: {
-          lecturer_id: lecturerId,
-          day: currentDay,
-          status: true,
-          time_slot: {
-            start_time: { lte: currentTime },
-            end_time: { gte: currentTime }
-          }
-        },
-        include: { room: { include: { building: true } }, time_slot: true }
-      })
-    : null
-
-  // 2. Cari Jadwal Mendatang (Persiapan Mengajar - 30 Menit Sebelumnya)
-  const upcomingSchedule = currentDay
-    ? await prisma.schedule.findFirst({
-        where: {
-          lecturer_id: lecturerId,
-          day: currentDay,
-          status: true,
-          time_slot: { start_time: { gt: currentTime } }
-        },
-        orderBy: { time_slot: { start_time: 'asc' } },
-        include: { room: { include: { building: true } }, time_slot: true }
-      })
-    : null
+  const { activeSchedule, upcomingSchedule } = await getEffectiveSchedulesForLecturerToday(lecturerId)
 
   // 3. Ambil Data Dosen & Home Room (Ruang Dosen)
   const lecturer = await prisma.lecturer.findUnique({
@@ -380,35 +372,7 @@ const faceRecognitionController = {
       const { currentDay, currentTime } = getJakartaScheduleContext(now)
       const { latitude: userLat, longitude: userLng } = req.body
 
-      // 1. Cari Jadwal Aktif (Sedang Berlangsung)
-      const activeSchedule = currentDay
-        ? await prisma.schedule.findFirst({
-            where: {
-              lecturer_id: lecturerId,
-              day: currentDay,
-              status: true,
-              time_slot: {
-                start_time: { lte: currentTime },
-                end_time: { gte: currentTime }
-              }
-            },
-            include: { room: { include: { building: true } }, time_slot: true }
-          })
-        : null
-
-      // 2. Cari Jadwal Mendatang (Persiapan Mengajar - 30 Menit Sebelumnya)
-      const upcomingSchedule = currentDay
-        ? await prisma.schedule.findFirst({
-            where: {
-              lecturer_id: lecturerId,
-              day: currentDay,
-              status: true,
-              time_slot: { start_time: { gt: currentTime } }
-            },
-            orderBy: { time_slot: { start_time: 'asc' } },
-            include: { room: { include: { building: true } }, time_slot: true }
-          })
-        : null
+      const { activeSchedule, upcomingSchedule } = await getEffectiveSchedulesForLecturerToday(lecturerId)
 
       // 3. Ambil Data Dosen & Home Room (Ruang Dosen)
       const lecturer = await prisma.lecturer.findUnique({
@@ -615,7 +579,7 @@ const faceRecognitionController = {
 
       const now = new Date()
       const { hours: jakartaHour } = getJakartaTime(now)
-      const { isWeekend } = getJakartaScheduleContext(now)
+      const { isWeekend, currentDay } = getJakartaScheduleContext(now)
       const timeAllowed = jakartaHour >= 7
 
       // Check if already attended today
@@ -637,17 +601,31 @@ const faceRecognitionController = {
       const isAttended = !!attendance
       const attendedAtTime = formatTime(attendance?.check_in_at)
 
-      // Logic for On Time & Late Minutes (Threshold 07:30) - Timezone Aware (WIB)
+      // Logic for On Time & Late Minutes based on schedule - Timezone Aware (WIB)
       let isOnTime = false
       let lateMinutes = null
+
       if (attendance) {
-        const { hours, minutes } = getJakartaTime(attendance.check_in_at)
+        isOnTime = true // Default to on-time if no schedule exists
+        lateMinutes = null
 
-        const totalMinutes = hours * 60 + minutes
-        const deadlineMinutes = 7 * 60 + 30 // 07:30
+        if (currentDay) {
+          const { schedulesToday } = await getEffectiveSchedulesForLecturerToday(lecturerId)
+          const firstSchedule = schedulesToday?.[0]
 
-        isOnTime = totalMinutes <= deadlineMinutes
-        lateMinutes = Math.max(0, totalMinutes - deadlineMinutes)
+          if (firstSchedule && firstSchedule.time_slot) {
+            const { hours, minutes } = getJakartaTime(attendance.check_in_at)
+            const totalMinutes = hours * 60 + minutes
+
+            const [startHour, startMinute] = firstSchedule.time_slot.start_time
+              .split(':')
+              .map(Number)
+            const startMinutes = startHour * 60 + startMinute
+
+            isOnTime = totalMinutes <= startMinutes
+            lateMinutes = Math.max(0, totalMinutes - startMinutes)
+          }
+        }
       }
 
       //? For production: Limit verification by time and day
