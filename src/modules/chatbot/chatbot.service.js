@@ -102,7 +102,15 @@ const FOLLOW_UP_KEYWORDS = [
   'kalau pak',
   'kalo pak',
   'kalau bapak',
-  'kalo bapak'
+  'kalo bapak',
+  'apa aja',
+  'apa saja',
+  'terus',
+  'lalu',
+  'ada apa',
+  'daftar',
+  'siapa aja',
+  'siapa saja'
 ]
 
 let langChainCache = null

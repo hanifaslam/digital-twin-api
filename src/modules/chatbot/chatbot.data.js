@@ -387,11 +387,16 @@ const findLecturer = async ({ lecturerId, lecturerName }) => {
 
   if (!lecturerName) return null
 
+  // Bersihkan sapaan dari nama (misal: "ibu eri" -> "eri")
+  const cleanedName = lecturerName
+    .replace(/^(ibu|bu|bapak|pak|prof|dr)\s+/i, '')
+    .trim()
+
   const matches = await prisma.lecturer.findMany({
     where: {
       user: {
         name: {
-          contains: lecturerName,
+          contains: cleanedName,
           mode: 'insensitive'
         }
       }
