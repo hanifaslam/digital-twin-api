@@ -31,7 +31,8 @@ const normalizeCellText = (value) =>
     .trim()
     .replace(/\s+/g, ' ')
 
-const normalizeComparableText = (value) => normalizeCellText(value).toLowerCase()
+const normalizeComparableText = (value) =>
+  normalizeCellText(value).toLowerCase()
 
 const buildNameSlug = (value) => {
   const normalized = normalizeCellText(value)
@@ -46,9 +47,7 @@ const buildNameSlug = (value) => {
 
 const normalizeTimeRange = (value) => {
   const normalized = normalizeCellText(value).replace(/\./g, ':')
-  const match = normalized.match(
-    /^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/i
-  )
+  const match = normalized.match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/i)
 
   if (!match) {
     return null
@@ -549,7 +548,10 @@ const findScheduleGroup = async (db, schedule, options = {}) => {
   })
 }
 
-const areTimeSlotSetsEqual = (currentTimeSlotIds = [], targetTimeSlotIds = []) => {
+const areTimeSlotSetsEqual = (
+  currentTimeSlotIds = [],
+  targetTimeSlotIds = []
+) => {
   if (currentTimeSlotIds.length !== targetTimeSlotIds.length) {
     return false
   }
@@ -561,7 +563,9 @@ const areTimeSlotSetsEqual = (currentTimeSlotIds = [], targetTimeSlotIds = []) =
     return false
   }
 
-  return currentSorted.every((timeSlotId, index) => timeSlotId === targetSorted[index])
+  return currentSorted.every(
+    (timeSlotId, index) => timeSlotId === targetSorted[index]
+  )
 }
 
 const findScheduleConflict = async ({
@@ -743,19 +747,15 @@ const scheduleController = {
       } = parsedWorkbook
 
       if (!study_program_name) {
-        return error(res, 'Study program name is missing in row 1', 400)
+        return error(res, 'Study program name is missing', 400)
       }
 
       if (!class_name) {
-        return error(res, 'Class name is missing in row 2', 400)
+        return error(res, 'Class name is missing', 400)
       }
 
       if (!semester) {
-        return error(
-          res,
-          'Semester header is missing or invalid in row 3',
-          400
-        )
+        return error(res, 'Semester header is missing or invalid', 400)
       }
 
       if (parsedRows.length === 0) {
@@ -1234,12 +1234,24 @@ const scheduleController = {
 
         if (conflict) {
           if (conflict.type === 'room') {
-            return error(res, `Room is already booked on ${day} for time slot ${currentTimeSlotId}`, 400)
+            return error(
+              res,
+              `Room is already booked on ${day.toLowerCase()} for the selected time slot`,
+              400
+            )
           }
           if (conflict.type === 'lecturer') {
-            return error(res, `Lecturer already has a schedule on ${day} for time slot ${currentTimeSlotId}`, 400)
+            return error(
+              res,
+              `Lecturer already has a schedule on ${day.toLowerCase()} for the selected time slot`,
+              400
+            )
           }
-          return error(res, `Schedule already exists for time slot ${currentTimeSlotId}`, 400)
+          return error(
+            res,
+            `Schedule already exists on ${day.toLowerCase()} for the selected time slot`,
+            400
+          )
         }
       }
 
@@ -1427,7 +1439,9 @@ const scheduleController = {
         }
       })
       const scheduleGroupIds = scheduleGroup.map((item) => item.id)
-      const currentTimeSlotIds = [...new Set(scheduleGroup.map((item) => item.time_slot_id))]
+      const currentTimeSlotIds = [
+        ...new Set(scheduleGroup.map((item) => item.time_slot_id))
+      ]
       const targetTimeSlotIds =
         time_slot_id !== undefined
           ? normalizeTimeSlotIds(time_slot_id)
@@ -1466,12 +1480,24 @@ const scheduleController = {
 
         if (conflict) {
           if (conflict.type === 'room') {
-            return error(res, `Room is already booked on ${targetData.day} for time slot ${currentTimeSlotId}`, 400)
+            return error(
+              res,
+              `Room is already booked on ${targetData.day.toLowerCase()} for the selected time slot`,
+              400
+            )
           }
           if (conflict.type === 'lecturer') {
-            return error(res, `Lecturer already has a schedule on ${targetData.day} for time slot ${currentTimeSlotId}`, 400)
+            return error(
+              res,
+              `Lecturer already has a schedule on ${targetData.day.toLowerCase()} for the selected time slot`,
+              400
+            )
           }
-          return error(res, `Schedule already exists for time slot ${currentTimeSlotId}`, 400)
+          return error(
+            res,
+            `Schedule already exists on ${targetData.day.toLowerCase()} for the selected time slot`,
+            400
+          )
         }
       }
 
@@ -1654,10 +1680,18 @@ const scheduleController = {
         month = tempDate.getMonth()
         day = tempDate.getDate()
       }
-      
+
       const overrideDateObj = new Date(Date.UTC(year, month, day, 0, 0, 0))
-      
-      const daysOfWeek = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY']
+
+      const daysOfWeek = [
+        'SUNDAY',
+        'MONDAY',
+        'TUESDAY',
+        'WEDNESDAY',
+        'THURSDAY',
+        'FRIDAY',
+        'SATURDAY'
+      ]
       const dayName = daysOfWeek[overrideDateObj.getUTCDay()]
       const mappedDay = DAY_NAME_MAP[dayName]
 
@@ -1669,34 +1703,54 @@ const scheduleController = {
         return error(res, 'Schedule not found', 404)
       }
 
-      const roleCode = (req.user?.role?.code || req.user?.role?.name || '').toUpperCase()
+      const roleCode = (
+        req.user?.role?.code ||
+        req.user?.role?.name ||
+        ''
+      ).toUpperCase()
       if (!['SA', 'SUPER_ADMIN', 'ADMIN'].includes(roleCode)) {
-        if (req.user?.lecturer?.id && existingSchedule.lecturer_id !== req.user.lecturer.id) {
-          return error(res, 'You are not authorized to modify another lecturer\'s schedule', 403)
+        if (
+          req.user?.lecturer?.id &&
+          existingSchedule.lecturer_id !== req.user.lecturer.id
+        ) {
+          return error(
+            res,
+            "You are not authorized to modify another lecturer's schedule",
+            403
+          )
         }
       }
 
       const scheduleGroup = await findScheduleGroup(prisma, existingSchedule, {
         select: { id: true, lecturer_id: true, time_slot: true }
       })
-      
+
       scheduleGroup.sort((a, b) => {
         const aStart = a.time_slot?.start_time || '00:00'
         const bStart = b.time_slot?.start_time || '00:00'
         return aStart.localeCompare(bStart)
       })
 
-      const startIndex = scheduleGroup.findIndex(s => s.id === existingSchedule.id)
-      
+      const startIndex = scheduleGroup.findIndex(
+        (s) => s.id === existingSchedule.id
+      )
+
       if (startIndex === -1) {
         return error(res, 'Schedule not found in group', 404)
       }
 
       if (timeSlotIds.length > scheduleGroup.length) {
-        return error(res, 'Cannot increase duration beyond scheduled blocks.', 400)
+        return error(
+          res,
+          'Cannot increase duration beyond scheduled blocks.',
+          400
+        )
       }
 
-      const targetSchedules = scheduleGroup.slice(startIndex, scheduleGroup.length)
+      const targetSchedules = scheduleGroup.slice(
+        startIndex,
+        scheduleGroup.length
+      )
       const originalScheduleIds = targetSchedules.map((item) => item.id)
 
       for (const timeSlotId of timeSlotIds) {
@@ -1708,17 +1762,28 @@ const scheduleController = {
             original_schedule_id: { notIn: originalScheduleIds }
           }
         })
-        if (overrideConflictRoom) return error(res, `Room is already booked on this date by another temporary schedule`, 400)
+        if (overrideConflictRoom)
+          return error(
+            res,
+            `Room is already booked on this date by another temporary schedule`,
+            400
+          )
 
-        const overrideConflictLecturer = await prisma.scheduleOverride.findFirst({
-          where: {
-            override_date: overrideDateObj,
-            original_schedule: { lecturer_id: existingSchedule.lecturer_id },
-            new_time_slot_id: timeSlotId,
-            original_schedule_id: { notIn: originalScheduleIds }
-          }
-        })
-        if (overrideConflictLecturer) return error(res, `Lecturer already has a temporary schedule at this time`, 400)
+        const overrideConflictLecturer =
+          await prisma.scheduleOverride.findFirst({
+            where: {
+              override_date: overrideDateObj,
+              original_schedule: { lecturer_id: existingSchedule.lecturer_id },
+              new_time_slot_id: timeSlotId,
+              original_schedule_id: { notIn: originalScheduleIds }
+            }
+          })
+        if (overrideConflictLecturer)
+          return error(
+            res,
+            `Lecturer already has a temporary schedule at this time`,
+            400
+          )
 
         const masterConflictRoom = await prisma.schedule.findFirst({
           where: {
@@ -1731,7 +1796,12 @@ const scheduleController = {
             }
           }
         })
-        if (masterConflictRoom) return error(res, `Room is already booked at this time by a regular schedule`, 400)
+        if (masterConflictRoom)
+          return error(
+            res,
+            `Room is already booked at this time by a regular schedule`,
+            400
+          )
 
         const masterConflictLecturer = await prisma.schedule.findFirst({
           where: {
@@ -1744,23 +1814,47 @@ const scheduleController = {
             }
           }
         })
-        if (masterConflictLecturer) return error(res, `Lecturer already has a regular schedule at this time`, 400)
+        if (masterConflictLecturer)
+          return error(
+            res,
+            `Lecturer already has a regular schedule at this time`,
+            400
+          )
       }
 
       const { getJakartaDateParts } = require('../../utils/date')
-      
+
       const jsDate = new Date(override_date)
       const targetDayOfWeek = jsDate.getDay() || 7
-      
+
       const startOfWeekJs = new Date(jsDate)
       startOfWeekJs.setDate(jsDate.getDate() - targetDayOfWeek + 1)
       const startOfWeekParts = getJakartaDateParts(startOfWeekJs)
-      const startOfWeek = new Date(Date.UTC(startOfWeekParts.year, startOfWeekParts.month - 1, startOfWeekParts.day, 0, 0, 0))
-    
+      const startOfWeek = new Date(
+        Date.UTC(
+          startOfWeekParts.year,
+          startOfWeekParts.month - 1,
+          startOfWeekParts.day,
+          0,
+          0,
+          0
+        )
+      )
+
       const endOfWeekJs = new Date(startOfWeekJs)
       endOfWeekJs.setDate(startOfWeekJs.getDate() + 6)
       const endOfWeekParts = getJakartaDateParts(endOfWeekJs)
-      const endOfWeek = new Date(Date.UTC(endOfWeekParts.year, endOfWeekParts.month - 1, endOfWeekParts.day, 23, 59, 59, 999))
+      const endOfWeek = new Date(
+        Date.UTC(
+          endOfWeekParts.year,
+          endOfWeekParts.month - 1,
+          endOfWeekParts.day,
+          23,
+          59,
+          59,
+          999
+        )
+      )
 
       // Delete existing overrides for this schedule group in the same week
       await prisma.scheduleOverride.deleteMany({
