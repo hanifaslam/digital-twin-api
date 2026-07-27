@@ -281,7 +281,7 @@ const getBuildingSnapshot = async (buildingId) => {
     building_id: building.id,
     building_name: building.name,
     room_count: building.rooms.length,
-    rooms: building.rooms.slice(0, 10),
+    rooms: building.rooms.slice(0, 50),
     energy_summary: energySummary,
     device_health: deviceHealth,
     top_rooms_by_power: topRooms.map((item) => ({
