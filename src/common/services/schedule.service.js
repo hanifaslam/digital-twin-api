@@ -59,10 +59,10 @@ const getEffectiveSchedulesForDate = async (targetDate, baseWhere = {}, include 
       const override = sched.overrides[0]
       return {
         ...sched,
-        room_id: override.new_room_id,
-        room: override.new_room,
-        time_slot_id: override.new_time_slot_id,
-        time_slot: override.new_time_slot,
+        room_id: override.new_room_id || sched.room_id,
+        room: override.new_room || sched.room,
+        time_slot_id: override.new_time_slot_id || sched.time_slot_id,
+        time_slot: override.new_time_slot || sched.time_slot,
         day: currentDay, // Update day to reflect the override date's day
         is_override: true
       }
