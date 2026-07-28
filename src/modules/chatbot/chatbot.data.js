@@ -599,43 +599,6 @@ const getLecturerStatusSnapshot = async (lecturerId) => {
         select: {
           name: true
         }
-      },
-      schedules: {
-        where: {
-          day: getJakartaScheduleContext().currentDay || undefined,
-          status: true
-        },
-        include: {
-          room: {
-            select: {
-              id: true,
-              name: true,
-              building: {
-                select: {
-                  id: true,
-                  name: true
-                }
-              }
-            }
-          },
-          course: {
-            select: {
-              name: true,
-              code: true
-            }
-          },
-          time_slot: {
-            select: {
-              start_time: true,
-              end_time: true
-            }
-          }
-        },
-        orderBy: {
-          time_slot: {
-            start_time: 'asc'
-          }
-        }
       }
     }
   })
@@ -657,7 +620,38 @@ const getLecturerStatusSnapshot = async (lecturerId) => {
     }
   })
 
-  const activeSchedule = lecturer.schedules.find(
+  const effectiveSchedules = await getEffectiveSchedulesForDate(new Date(), {
+    lecturer_id: lecturerId
+  }, {
+    room: {
+      select: {
+        id: true,
+        name: true,
+        building: {
+          select: {
+            id: true,
+            name: true
+          }
+        }
+      }
+    },
+    course: {
+      select: {
+        name: true,
+        code: true
+      }
+    },
+    time_slot: {
+      select: {
+        start_time: true,
+        end_time: true
+      }
+    }
+  })
+
+  effectiveSchedules.sort((a, b) => a.time_slot.start_time.localeCompare(b.time_slot.start_time))
+
+  const activeSchedule = effectiveSchedules.find(
     (item) =>
       currentTime >= item.time_slot.start_time &&
       currentTime <= item.time_slot.end_time
@@ -671,6 +665,16 @@ const getLecturerStatusSnapshot = async (lecturerId) => {
     is_manual: lecturer.is_manual,
     overridden_at: formatTime(lecturer.overridden_at),
     attended_at: formatTime(todayAttendance?.check_in_at),
+    today_schedules: effectiveSchedules.map(item => ({
+      course_name: item.course?.name || null,
+      course_code: item.course?.code || null,
+      room_id: item.room?.id || null,
+      room_name: item.room?.name || null,
+      building_id: item.room?.building?.id || null,
+      building_name: item.room?.building?.name || null,
+      start_time: item.time_slot.start_time,
+      end_time: item.time_slot.end_time
+    })),
     active_schedule: activeSchedule
       ? {
           course_name: activeSchedule.course?.name || null,
